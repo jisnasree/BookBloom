@@ -8,21 +8,20 @@ BookBloom Web App
 
 ### 1.2 Background
 
-The product is a customer-facing online bookstore where registered customers can browse, search, and purchase all kinds of books. The store will support both physical books and ebooks.
+The product is a customer-facing online bookstore where registered customers can browse, search, and purchase physical books.
 
 ### 1.3 Problem To Solve
 
-Customers need a simple online place to discover books, purchase them, send physical books as gifts, and access ebook purchases. Store administrators need a way to manage the book catalog and customer orders.
+Customers need a simple online place to discover and purchase books. Store administrators need a way to manage the book catalog and customer orders.
 
 ### 1.4 Target Users
 
 - Registered customers who want to buy books online.
-- Gift buyers who want to send physical books to another person.
 - Store administrators who manage books, pricing, inventory, reviews, notifications, and orders.
 
 ### 1.5 Desired Outcome
 
-Customers should be able to create an account, find books, purchase physical books or ebooks, send physical books as gifts, access purchased ebooks from their account, leave reviews, and receive useful order-related notifications.
+Customers should be able to create an account, find and purchase physical books, leave reviews, and receive useful order-related notifications.
 
 Administrators should be able to manage the bookstore catalog, customer orders, reviews, and key operational updates.
 
@@ -41,13 +40,8 @@ The first version should include:
 - Customer reviews and ratings.
 - Shopping cart.
 - Checkout for registered customers.
-- Purchase support for physical books and ebooks.
+- Purchase support for physical books.
 - Shipping address collection for physical books.
-- Gift purchase option for physical books.
-- Gift recipient name and shipping address.
-- Optional personal gift message.
-- Ebook download after purchase.
-- Ebook access from the customer account library.
 - Advanced notifications for important customer and order events.
 - Admin area for managing books and orders.
 
@@ -60,7 +54,6 @@ The following can be considered later unless needed immediately:
 - Subscription plans.
 - Used book marketplace features.
 - Seller or vendor accounts.
-- Advanced in-browser ebook reader tools.
 - International tax and complex shipping rules.
 - Promotional campaigns and coupons.
 - Wishlists.
@@ -87,21 +80,13 @@ A customer opens a book detail page to view information such as title, author, d
 
 A customer adds a physical book to the cart, enters shipping details, completes checkout, and receives order confirmation.
 
-#### Send Physical Book As Gift
-
-A customer selects a gift option for a physical book, enters the recipient name and shipping address, adds an optional personal message, and completes checkout.
-
-#### Purchase Ebook
-
-A customer adds an ebook to the cart, completes checkout, and can then download the ebook or access it from their account library.
-
 #### Review A Book
 
 A registered customer can leave a rating and review for a book.
 
 #### Receive Notifications
 
-A customer receives notifications for order confirmation, ebook access, shipping updates, gift order updates, and relevant account messages.
+A customer receives notifications for order confirmation, shipping updates, and relevant account messages.
 
 #### Manage Books And Orders
 
@@ -110,14 +95,10 @@ An administrator can add, update, or remove books, manage pricing and format opt
 ### 1.9 Business Rules Or Constraints
 
 - Customers must have an account to purchase books.
-- Books may be available as physical books, ebooks, or both.
+- Books are sold as physical copies in the first version.
 - Physical book purchases require a shipping address.
-- Gift purchases require recipient name and recipient shipping address.
-- Gift purchases may include a personal message.
-- Ebook purchases must be available for download after purchase.
-- Ebook purchases must also appear in the customer's account library.
 - Reviews and ratings should be tied to registered customer accounts.
-- Notifications should be triggered by key order, ebook, shipping, gift, and account events.
+- Notifications should be triggered by key order, shipping, and account events.
 - Admin users must be able to manage the catalog and orders.
 - All customer-facing and admin-facing book prices, cart totals, order totals, and checkout amounts must be displayed in INR.
 
@@ -127,7 +108,6 @@ An administrator can add, update, or remove books, manage pricing and format opt
 - Should physical book orders include delivery tracking?
 - Should customers receive email confirmations in addition to in-app notifications?
 - Should inventory be tracked for physical books?
-- Should ebooks have file format options such as PDF, EPUB, or MOBI?
 - Should customers be able to refund or cancel orders?
 - Should admins moderate reviews before they appear publicly?
 - What information should be shown on the customer account page?
@@ -135,7 +115,7 @@ An administrator can add, update, or remove books, manage pricing and format opt
 
 ### 1.11 Recommended Next Step
 
-The next step is to define the highest-priority workflows in more detail: account creation, book search, checkout, gift shipping, ebook access, reviews, notifications, and admin catalog management. After that, these requirements can be converted into user stories and acceptance criteria.
+The next step is to define the highest-priority workflows in more detail: account creation, book search, physical-book checkout, reviews, notifications, and admin catalog management. After that, these requirements can be converted into user stories and acceptance criteria.
 
 ## 2. Module And Feature Planning
 
@@ -148,28 +128,26 @@ The next step is to define the highest-priority workflows in more detail: accoun
 5. Reviews and Ratings Module
 6. Shopping Cart Module
 7. Checkout and Payment Module
-8. Shipping and Gift Module
-9. Ebook Library Module
-10. Order Management Module
-11. Admin Management Module
-12. Notification Module
+8. Shipping Module
+9. Order Management Module
+10. Admin Management Module
+11. Notification Module
 
 ### 2.2 Features By Module
 
 | Module | Features / Functions |
 | --- | --- |
 | Customer Account Module | Customer registration, login, logout, profile management, saved shipping addresses, order history |
-| Book Catalog Module | Display all books, organize books by category, support physical and ebook formats, show pricing and availability |
+| Book Catalog Module | Display physical books, organize books by category, show pricing and availability |
 | Search and Filtering Module | Search by title and author, filter by category, price, format, and rating |
 | Book Detail Module | Show book title, author, description, format options, price, availability, ratings, and reviews |
 | Reviews and Ratings Module | Allow registered customers to submit ratings and reviews, display average rating, display customer reviews |
 | Shopping Cart Module | Add books to cart, update quantities, remove items, show cart subtotal |
 | Checkout and Payment Module | Confirm cart, collect payment details, calculate order total, place order |
-| Shipping and Gift Module | Collect shipping address, support gift recipient name and address, allow personal gift message |
-| Ebook Library Module | Provide ebook download after purchase, show purchased ebooks in customer account library |
-| Order Management Module | Store customer orders, show order status, separate physical book and ebook fulfillment needs |
+| Shipping Module | Collect the customer's shipping address for physical book purchases |
+| Order Management Module | Store customer orders and show order status |
 | Admin Management Module | Add, edit, and remove books; manage prices and formats; view and update orders |
-| Notification Module | Send order confirmation, ebook access confirmation, shipping updates, gift order updates, and account-related messages |
+| Notification Module | Send order confirmation, shipping updates, and account-related messages |
 
 ### 2.3 Module Dependencies
 
@@ -180,11 +158,10 @@ The next step is to define the highest-priority workflows in more detail: accoun
 | Reviews and Ratings Module | Customer Account Module, Book Detail Module | Reviews must be tied to registered customers and specific books |
 | Shopping Cart Module | Customer Account Module, Book Catalog Module | Customers add catalog items to their cart |
 | Checkout and Payment Module | Customer Account Module, Shopping Cart Module | Checkout requires a logged-in customer and cart items |
-| Shipping and Gift Module | Checkout and Payment Module | Shipping and gift details are collected during checkout for physical books |
-| Ebook Library Module | Customer Account Module, Checkout and Payment Module | Ebooks become available after purchase |
+| Shipping Module | Checkout and Payment Module | Shipping details are collected during checkout for physical books |
 | Order Management Module | Customer Account Module, Checkout and Payment Module | Orders are created after checkout |
 | Admin Management Module | Book Catalog Module, Order Management Module | Admins manage books and customer orders |
-| Notification Module | Order Management Module, Ebook Library Module, Shipping and Gift Module | Notifications are triggered by order, ebook, and shipping events |
+| Notification Module | Order Management Module, Shipping Module | Notifications are triggered by order and shipping events |
 
 ### 2.4 MVP Features To Complete First
 
@@ -195,26 +172,23 @@ The MVP should focus on the smallest complete web buying experience, including c
 3. Desktop-first web admin experience for operational use.
 4. Static homepage promotional section with desktop layout.
 5. Customer registration and login.
-6. Book catalog with physical and ebook formats.
+6. Physical book catalog.
 7. Search and filtering by title, author, category, price, and format.
 8. Book detail pages.
 9. Customer reviews and ratings.
 10. Shopping cart.
 11. Checkout for registered customers.
 12. Shipping address collection for physical books.
-13. Gift recipient details and personal message for physical books.
-14. Ebook download after purchase.
-15. Customer ebook library.
-16. Basic order history.
-17. Admin ability to add and edit books.
-18. Admin ability to view and manage orders.
-19. Advanced notifications, including order confirmation, ebook access confirmation, shipping updates, and gift order notifications.
+13. Basic order history.
+14. Admin ability to add and edit books.
+15. Admin ability to view and manage orders.
+16. Advanced notifications, including order confirmation and shipping updates.
 
 ## 3. UI/UX Design - Figma Instructions
 
 ### 3.1 Objective
 
-Create a Figma design for an online bookstore web application. The design should cover the MVP modules and major customer and admin workflows, including browsing books, purchasing physical books and ebooks, gifting physical books, accessing ebooks, leaving reviews, receiving notifications, and managing books and orders as an admin.
+Create a Figma design for an online bookstore web application. The design should cover the MVP modules and major customer and admin workflows, including browsing and purchasing physical books, leaving reviews, receiving notifications, and managing books and orders as an admin.
 
 The MVP is explicitly a responsive web application. For the Figma MVP design pass, create desktop web frames only. Tablet and mobile behavior should be captured as implementation requirements and responsive notes, not as separate Figma screen sets.
 
@@ -234,17 +208,15 @@ Create the following screens in Figma:
 8. Shopping Cart Page
 9. Address & Payment Page
 10. Checkout Page
-11. Gift Details Page / Checkout Section
-12. Order Confirmation Page
-13. Customer Order History Page
-14. Ebook Library Page
-15. Review Submission Flow
-16. Notifications / Message Center Page
-17. Admin Login Page
-18. Admin Dashboard
-19. Admin Book Management Page
-20. Admin Add / Edit Book Page
-21. Admin Order Management Page
+11. Order Confirmation Page
+12. Customer Order History Page
+13. Review Submission Flow
+14. Notifications / Message Center Page
+15. Admin Login Page
+16. Admin Dashboard
+17. Admin Book Management Page
+18. Admin Add / Edit Book Page
+19. Admin Order Management Page
 
 ### 3.3 Main Customer Screens
 
@@ -259,7 +231,7 @@ Design a welcoming bookstore homepage with:
 - Popular categories.
 - New arrivals.
 - Best sellers.
-- Physical book and ebook highlights.
+- Physical book highlights.
 - Login / account access.
 - Cart icon.
 - Footer links.
@@ -280,7 +252,7 @@ Homepage promotional section requirements:
 - Use a book-filled background treatment inspired by bookstore merchandising banners, with many real published book covers arranged around the promotional text.
 - Position the Discover Your Next Great Story text and CTA group on the left side of the promotional section.
 - Do not use a visible border around the Discover Your Next Great Story text/CTA group.
-- Do not use Barnes & Noble branding, `Holiday Gift Guide`, or `Find the Perfect Gift` copy in the MVP New Releases section.
+- Do not use Barnes & Noble branding in the MVP New Releases section.
 - Do not use a green background or green promotional text treatment for the Discover Your Next Great Story section.
 - Use a neutral or light background treatment that lets the book covers and Discover Your Next Great Story message stand out clearly.
 - Use real free/publicly available book cover imagery where available.
@@ -315,7 +287,7 @@ Featured books section requirements:
 - Include a visible `See all` link near the Featured Books section heading.
 - Show a row of featured book cards with real cover images, title, author, available format, price, and rating.
 - Use larger featured book cards with cover-dominant layouts so the original book cover artwork is easy to recognize.
-- For each featured book card, show one available format option: `Paperback`, `Hardcover`, or `Ebook`.
+- For each featured book card, show one available physical format option: `Paperback` or `Hardcover`.
 - Show the price on a separate line below the format option.
 - Show the rating as star icons on a separate line below the price.
 - Use one filled star for a 1-star rating, two filled stars for a 2-star rating, and so on through five filled stars for a 5-star rating.
@@ -341,7 +313,7 @@ Catalog filter options:
 
 - Category: Kids, Fiction, Romance, Literature, Mystery & Thrillers.
 - Price: Under ₹500, ₹500-₹1000, Over ₹1000.
-- Format: Hardcover, Paperback, Ebook.
+- Format: Hardcover, Paperback.
 - Reviews: 5 stars, 4 stars, 3 stars, 2 stars, 1 star.
 
 #### Search Results Page
@@ -366,17 +338,16 @@ Design a detailed book page with:
 - Author.
 - Description.
 - Category.
-- Format options: physical, ebook, or both.
+- Format options: Paperback and/or Hardcover.
 - Price by format.
 - Availability.
 - Quantity selector for physical books.
 - Add to cart button.
-- Gift option for physical books.
 - Ratings summary.
 - Customer reviews.
 - Write review action for eligible logged-in customers.
 
-On the individual book detail screen, show the format options as borderless choices for Hardcover, Ebook, and Paperback. Display the price directly below each format option.
+On the individual book detail screen, show the available physical formats as borderless choices for Hardcover and Paperback. Display the price directly below each format option.
 
 ### 3.4 Account Screens
 
@@ -409,7 +380,6 @@ Design an account dashboard with navigation to:
 
 - Profile.
 - Order history.
-- Ebook library.
 - Saved addresses.
 - Notifications.
 - Reviews.
@@ -417,7 +387,6 @@ Design an account dashboard with navigation to:
 Show a summary of:
 
 - Recent orders.
-- Recently purchased ebooks.
 - Latest notifications.
 
 ### 3.5 Shopping And Checkout Screens
@@ -434,7 +403,7 @@ Design the Shopping Cart page as a desktop two-column layout:
 Each cart book row should show:
 
 - Book cover.
-- Book title, author, and selected format such as paperback, hardcover, or ebook.
+- Book title, author, and selected physical format such as paperback or hardcover.
 - Availability status for purchasable items.
 - Quantity control where applicable.
 - Current price, with optional original price shown separately as a strikethrough when discounted.
@@ -448,7 +417,7 @@ The right-side order total area should show:
 - Safe and secure checkout note.
 - Payment method indicators limited to Visa, Mastercard, and Amex.
 
-The page should also include Empty Cart and Continue Shopping actions. Do not include a separate "Next step: checkout" note on the Shopping Cart page. Use the same green accent color used on other pages for primary cart actions instead of pink. Use the same warm off-white page background as the other desktop screens. Keep book cover image sizing and font sizing consistent with the other desktop pages. Clearly distinguish physical books from ebooks.
+The page should also include Empty Cart and Continue Shopping actions. Do not include a separate "Next step: checkout" note on the Shopping Cart page. Use the same green accent color used on other pages for primary cart actions instead of pink. Use the same warm off-white page background as the other desktop screens. Keep book cover image sizing and font sizing consistent with the other desktop pages.
 
 #### Checkout Page
 
@@ -458,12 +427,9 @@ Include sections for:
 
 - Order summary.
 - Shipping address for physical books.
-- Gift option for physical books.
 - Payment details.
 - Final review.
 - Place order button.
-
-For ebook-only orders, shipping should not be required.
 
 #### Address & Payment Page
 
@@ -493,16 +459,6 @@ The payment section should include:
 - Checkbox for using the shipping address as the billing address.
 - PayPal payment option as an alternate method.
 
-#### Gift Details Section
-
-When a physical book is marked as a gift, include fields for:
-
-- Recipient name.
-- Recipient shipping address.
-- Optional personal message.
-
-The gift section should appear only for physical book purchases.
-
 #### Order Confirmation Page
 
 Design a confirmation screen showing:
@@ -510,25 +466,7 @@ Design a confirmation screen showing:
 - Order number.
 - Purchased books.
 - Delivery details for physical books.
-- Ebook access instructions.
-- Gift recipient details, if applicable.
 - Link to order history.
-- Link to ebook library.
-
-### 3.6 Ebook Screens
-
-#### Ebook Library Page
-
-Design a customer ebook library with:
-
-- List or grid of purchased ebooks.
-- Book cover.
-- Title.
-- Author.
-- Purchase date.
-- Download button.
-- Read or access button.
-- Search within library.
 
 ### 3.7 Reviews And Ratings Flow
 
@@ -556,9 +494,7 @@ Reviews should display:
 Design a notification or message center covering:
 
 - Order confirmation.
-- Ebook access confirmation.
 - Shipping updates.
-- Gift order updates.
 - Account-related messages.
 
 Each notification should show:
@@ -578,7 +514,6 @@ Design an admin dashboard with:
 - Total books.
 - Recent orders.
 - Pending physical shipments.
-- Recent ebook purchases.
 - Review activity.
 - Quick links to book and order management.
 
@@ -608,11 +543,9 @@ Design a form with:
 - Description.
 - Category.
 - Cover image upload placeholder.
-- Format selection: physical, ebook, or both.
+- Format selection: Paperback, Hardcover, or both.
 - Physical book price.
-- Ebook price.
 - Physical stock quantity.
-- Ebook file upload placeholder.
 - Publish/unpublish status.
 - Save button.
 
@@ -623,8 +556,7 @@ Design an order management table with:
 - Order number.
 - Customer name.
 - Order date.
-- Order type: physical, ebook, or mixed.
-- Gift indicator.
+- Order type: physical book.
 - Payment status.
 - Fulfillment status.
 - View details action.
@@ -633,10 +565,7 @@ Order detail view should show:
 
 - Customer details.
 - Shipping address.
-- Gift recipient details.
-- Gift message.
 - Purchased items.
-- Ebook delivery status.
 - Physical shipping status.
 
 ### 3.10 Navigation Requirements
@@ -648,7 +577,6 @@ Customer navigation should include:
 - Home.
 - Books.
 - Categories.
-- Ebook Library.
 - Orders.
 - Notifications.
 - Account.
@@ -672,8 +600,7 @@ Define clear navigation links between:
 - Address & Payment to Checkout or Order Confirmation.
 - Checkout to Order Confirmation.
 - Order Confirmation to Order History.
-- Order Confirmation to Ebook Library.
-- Account Dashboard to Orders, Ebook Library, and Notifications.
+- Account Dashboard to Orders and Notifications.
 - Admin Dashboard to Book Management and Order Management.
 
 ### 3.11 Component Consistency
