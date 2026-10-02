@@ -17,13 +17,13 @@ Customers need a simple online place to discover and purchase books. Store admin
 ### 1.4 Target Users
 
 - Registered customers who want to buy books online.
-- Store administrators who manage books, pricing, inventory, reviews, notifications, and orders.
+- Store administrators who manage books, pricing, inventory, and orders.
 
 ### 1.5 Desired Outcome
 
-Customers should be able to create an account, find and purchase physical books, leave reviews, and receive useful order-related notifications.
+Customers should be able to create an account, find and purchase physical books, and view their order history.
 
-Administrators should be able to manage the bookstore catalog, customer orders, reviews, and key operational updates.
+Administrators should be able to manage the bookstore catalog, customer orders, and key operational updates.
 
 ### 1.6 Initial Scope
 
@@ -37,12 +37,10 @@ The first version should include:
 - Book catalog for all kinds of books.
 - Search and filtering by title, author, category, price, and format.
 - Book detail pages.
-- Customer reviews and ratings.
 - Shopping cart.
 - Checkout for registered customers.
 - Purchase support for physical books.
 - Shipping address collection for physical books.
-- Advanced notifications for important customer and order events.
 - Admin area for managing books and orders.
 
 ### 1.7 Out Of Scope For Now
@@ -68,25 +66,19 @@ The following can be considered later unless needed immediately:
 
 A customer creates an account or logs into an existing account before purchasing books.
 
+During registration, the customer enters first name, last name, email, phone number, password, and password confirmation; accepts the Terms & Conditions; and submits the form to create an account.
+
 #### Browse And Search Books
 
 A customer browses the catalog or searches for books by title, author, category, price, or format.
 
 #### View Book Details
 
-A customer opens a book detail page to view information such as title, author, description, format, price, availability, ratings, and reviews.
+A customer opens a book detail page to view information such as title, author, description, format, price, and availability.
 
 #### Purchase Physical Book
 
-A customer adds a physical book to the cart, enters shipping details, completes checkout, and receives order confirmation.
-
-#### Review A Book
-
-A registered customer can leave a rating and review for a book.
-
-#### Receive Notifications
-
-A customer receives notifications for order confirmation, shipping updates, and relevant account messages.
+A customer adds a physical book to the cart, enters shipping details, completes checkout, sees an order-completed confirmation screen, and receives an order confirmation email at the email address registered to their account.
 
 #### Manage Books And Orders
 
@@ -95,27 +87,29 @@ An administrator can add, update, or remove books, manage pricing and format opt
 ### 1.9 Business Rules Or Constraints
 
 - Customers must have an account to purchase books.
+- Account registration requires first name, last name, email, phone number, password, and confirmation of the Terms & Conditions.
 - Books are sold as physical copies in the first version.
 - Physical book purchases require a shipping address.
-- Reviews and ratings should be tied to registered customer accounts.
-- Notifications should be triggered by key order, shipping, and account events.
+- BookBloom serves customers in India only; shipping addresses outside India are not supported.
+- Shipping is free for every order; the shipping charge is ₹0.
+- Physical inventory must be tracked, and checkout must prevent purchasing quantities greater than available stock.
+- Accepted payment methods are credit cards (American Express, Visa, and Mastercard) and PayPal.
+- After a successful order placement, show an order-completed confirmation screen and send a confirmation email to the customer's registered email address.
+- `Order completed` on the confirmation screen means checkout/order placement succeeded; it does not mean the physical shipment has been delivered.
 - Admin users must be able to manage the catalog and orders.
 - All customer-facing and admin-facing book prices, cart totals, order totals, and checkout amounts must be displayed in INR.
 
 ### 1.10 Open Questions
 
-- What payment methods should be supported?
 - Should physical book orders include delivery tracking?
-- Should customers receive email confirmations in addition to in-app notifications?
-- Should inventory be tracked for physical books?
 - Should customers be able to refund or cancel orders?
-- Should admins moderate reviews before they appear publicly?
 - What information should be shown on the customer account page?
-- Should there be tax, shipping fee, or discount calculations in the first version?
+- What India-specific tax calculations, if any, should apply in the first version?
+- How should catalog star ratings be sourced and maintained, for example through admin entry or import?
 
 ### 1.11 Recommended Next Step
 
-The next step is to define the highest-priority workflows in more detail: account creation, book search, physical-book checkout, reviews, notifications, and admin catalog management. After that, these requirements can be converted into user stories and acceptance criteria.
+The next step is to define the highest-priority workflows in more detail: account creation, book search, physical-book checkout, order history, and admin catalog management. After that, these requirements can be converted into user stories and acceptance criteria.
 
 ## 2. Module And Feature Planning
 
@@ -125,13 +119,11 @@ The next step is to define the highest-priority workflows in more detail: accoun
 2. Book Catalog Module
 3. Search and Filtering Module
 4. Book Detail Module
-5. Reviews and Ratings Module
-6. Shopping Cart Module
-7. Checkout and Payment Module
-8. Shipping Module
-9. Order Management Module
-10. Admin Management Module
-11. Notification Module
+5. Shopping Cart Module
+6. Checkout and Payment Module
+7. Shipping Module
+8. Order Management Module
+9. Admin Management Module
 
 ### 2.2 Features By Module
 
@@ -139,15 +131,13 @@ The next step is to define the highest-priority workflows in more detail: accoun
 | --- | --- |
 | Customer Account Module | Customer registration, login, logout, profile management, saved shipping addresses, order history |
 | Book Catalog Module | Display physical books, organize books by category, show pricing and availability |
-| Search and Filtering Module | Search by title and author, filter by category, price, format, and rating |
-| Book Detail Module | Show book title, author, description, format options, price, availability, ratings, and reviews |
-| Reviews and Ratings Module | Allow registered customers to submit ratings and reviews, display average rating, display customer reviews |
+| Search and Filtering Module | Search by title and author, filter by category, price, and format |
+| Book Detail Module | Show book title, author, description, format options, price, and availability |
 | Shopping Cart Module | Add books to cart, update quantities, remove items, show cart subtotal |
 | Checkout and Payment Module | Confirm cart, collect payment details, calculate order total, place order |
 | Shipping Module | Collect the customer's shipping address for physical book purchases |
 | Order Management Module | Store customer orders and show order status |
 | Admin Management Module | Add, edit, and remove books; manage prices and formats; view and update orders |
-| Notification Module | Send order confirmation, shipping updates, and account-related messages |
 
 ### 2.3 Module Dependencies
 
@@ -155,17 +145,15 @@ The next step is to define the highest-priority workflows in more detail: accoun
 | --- | --- | --- |
 | Book Detail Module | Book Catalog Module | Book details come from catalog data |
 | Search and Filtering Module | Book Catalog Module | Search and filters operate on catalog data |
-| Reviews and Ratings Module | Customer Account Module, Book Detail Module | Reviews must be tied to registered customers and specific books |
 | Shopping Cart Module | Customer Account Module, Book Catalog Module | Customers add catalog items to their cart |
 | Checkout and Payment Module | Customer Account Module, Shopping Cart Module | Checkout requires a logged-in customer and cart items |
 | Shipping Module | Checkout and Payment Module | Shipping details are collected during checkout for physical books |
 | Order Management Module | Customer Account Module, Checkout and Payment Module | Orders are created after checkout |
 | Admin Management Module | Book Catalog Module, Order Management Module | Admins manage books and customer orders |
-| Notification Module | Order Management Module, Shipping Module | Notifications are triggered by order and shipping events |
 
 ### 2.4 MVP Features To Complete First
 
-The MVP should focus on the smallest complete web buying experience, including customer trust features and essential communication.
+The MVP should focus on the smallest complete web buying experience for registered customers and store administrators.
 
 1. Responsive web customer experience for desktop, tablet, and mobile in implementation requirements.
 2. Desktop-only Figma designs for the MVP customer screens.
@@ -175,20 +163,18 @@ The MVP should focus on the smallest complete web buying experience, including c
 6. Physical book catalog.
 7. Search and filtering by title, author, category, price, and format.
 8. Book detail pages.
-9. Customer reviews and ratings.
-10. Shopping cart.
-11. Checkout for registered customers.
-12. Shipping address collection for physical books.
-13. Basic order history.
-14. Admin ability to add and edit books.
-15. Admin ability to view and manage orders.
-16. Advanced notifications, including order confirmation and shipping updates.
+9. Shopping cart.
+10. Checkout for registered customers.
+11. Shipping address collection for physical books.
+12. Basic order history.
+13. Admin ability to add and edit books.
+14. Admin ability to view and manage orders.
 
 ## 3. UI/UX Design - Figma Instructions
 
 ### 3.1 Objective
 
-Create a Figma design for an online bookstore web application. The design should cover the MVP modules and major customer and admin workflows, including browsing and purchasing physical books, leaving reviews, receiving notifications, and managing books and orders as an admin.
+Create a Figma design for an online bookstore web application. The design should cover the MVP modules and major customer and admin workflows, including browsing and purchasing physical books and managing books and orders as an admin.
 
 The MVP is explicitly a responsive web application. For the Figma MVP design pass, create desktop web frames only. Tablet and mobile behavior should be captured as implementation requirements and responsive notes, not as separate Figma screen sets.
 
@@ -210,13 +196,11 @@ Create the following screens in Figma:
 10. Checkout Page
 11. Order Confirmation Page
 12. Customer Order History Page
-13. Review Submission Flow
-14. Notifications / Message Center Page
-15. Admin Login Page
-16. Admin Dashboard
-17. Admin Book Management Page
-18. Admin Add / Edit Book Page
-19. Admin Order Management Page
+13. Admin Login Page
+14. Admin Dashboard
+15. Admin Book Management Page
+16. Admin Add / Edit Book Page
+17. Admin Order Management Page
 
 ### 3.3 Main Customer Screens
 
@@ -285,12 +269,11 @@ Featured books section requirements:
 
 - Present featured books as a horizontal carousel on the homepage.
 - Include a visible `See all` link near the Featured Books section heading.
-- Show a row of featured book cards with real cover images, title, author, available format, price, and rating.
+- Show a row of featured book cards with real cover images, title, author, available format, and price.
 - Use larger featured book cards with cover-dominant layouts so the original book cover artwork is easy to recognize.
 - For each featured book card, show one available physical format option: `Paperback` or `Hardcover`.
 - Show the price on a separate line below the format option.
-- Show the rating as star icons on a separate line below the price.
-- Use one filled star for a 1-star rating, two filled stars for a 2-star rating, and so on through five filled stars for a 5-star rating.
+- Show the book rating as star icons on a separate line below the price. For ratings from 1 to 5, fill exactly that number of stars.
 - Show book prices in INR, not dollars.
 - Include carousel navigation controls for moving through featured books.
 - Keep the featured books carousel inside the desktop content container without horizontal page overflow.
@@ -303,9 +286,9 @@ Design a catalog page where users can browse all books.
 Include:
 
 - Book grid or list view.
-- Filters for category, price, format, and rating.
+- Filters for category, price, and format.
 - Sort options such as newest, price, popularity, and rating.
-- Book cards showing cover, title, author, price, format, rating, and availability.
+- Book cards showing cover, title, author, price, format, star rating, and availability.
 - All prices must be shown in INR.
 - Add to cart or view details action.
 
@@ -314,7 +297,7 @@ Catalog filter options:
 - Category: Kids, Fiction, Romance, Literature, Mystery & Thrillers.
 - Price: Under ₹500, ₹500-₹1000, Over ₹1000.
 - Format: Hardcover, Paperback.
-- Reviews: 5 stars, 4 stars, 3 stars, 2 stars, 1 star.
+- Rating: 5 stars, 4 stars, 3 stars, 2 stars, 1 star.
 
 #### Search Results Page
 
@@ -341,11 +324,9 @@ Design a detailed book page with:
 - Format options: Paperback and/or Hardcover.
 - Price by format.
 - Availability.
+- Star-rating summary.
 - Quantity selector for physical books.
 - Add to cart button.
-- Ratings summary.
-- Customer reviews.
-- Write review action for eligible logged-in customers.
 
 On the individual book detail screen, show the available physical formats as borderless choices for Hardcover and Paperback. Display the price directly below each format option.
 
@@ -353,14 +334,17 @@ On the individual book detail screen, show the available physical formats as bor
 
 #### Registration Page
 
-Design a customer registration form with:
+Design one customer registration screen with these fields in this order:
 
-- Full name.
+- First Name.
+- Last Name.
 - Email address.
+- Phone Number.
 - Password.
 - Confirm password.
-- Create account button.
-- Link to login page.
+- Required checkbox: `I agree to the Terms & Conditions`.
+- `Create Account` button.
+- Prompt: `Already have an account? Login.` with `Login` linking to the login page.
 - Basic validation and error states.
 
 #### Login Page
@@ -376,18 +360,18 @@ Design a customer login form with:
 
 #### Customer Account Dashboard
 
-Design an account dashboard with navigation to:
+Show `Welcome back! 👋` as the account dashboard heading. Remove the `Account dashboard` heading text.
+
+Design account navigation in this order:
 
 - Profile.
 - Order history.
 - Saved addresses.
-- Notifications.
-- Reviews.
+- Sign out.
 
 Show a summary of:
 
 - Recent orders.
-- Latest notifications.
 
 ### 3.5 Shopping And Checkout Screens
 
@@ -412,10 +396,11 @@ Each cart book row should show:
 The right-side order total area should show:
 
 - Subtotal and total.
+- Shipping charge shown as Free (₹0).
 - Update cart action.
 - Checkout button.
 - Safe and secure checkout note.
-- Payment method indicators limited to Visa, Mastercard, and Amex.
+- Payment method indicators for American Express, Visa, Mastercard, and PayPal.
 
 The page should also include Empty Cart and Continue Shopping actions. Do not include a separate "Next step: checkout" note on the Shopping Cart page. Use the same green accent color used on other pages for primary cart actions instead of pink. Use the same warm off-white page background as the other desktop screens. Keep book cover image sizing and font sizing consistent with the other desktop pages.
 
@@ -427,8 +412,9 @@ Include sections for:
 
 - Order summary.
 - Shipping address for physical books.
+- Shipping charge shown as Free (₹0).
 - Payment details.
-- Final review.
+- Final order confirmation details.
 - Place order button.
 
 #### Address & Payment Page
@@ -437,21 +423,21 @@ Add a dedicated screen after the Shopping Cart page where registered customers e
 
 The address section should include:
 
-- Country/region selector.
+- Country/region fixed to India; international destinations are not supported.
 - First name and last name.
 - Company field marked optional.
 - Address search/input field.
 - Apartment, suite, or unit field marked optional.
 - City.
-- State selector.
-- ZIP/postal code.
+- Indian state/union territory selector.
+- Indian PIN code (six digits).
 - Phone number.
 
 The payment section should include:
 
 - Secure payment helper text.
 - Credit card payment option selected by default.
-- Payment method indicators for Visa, Mastercard, and Amex.
+- Accepted payment methods: American Express, Visa, Mastercard, and PayPal.
 - Card number field.
 - Expiration date field.
 - Security code field.
@@ -461,51 +447,17 @@ The payment section should include:
 
 #### Order Confirmation Page
 
-Design a confirmation screen showing:
+Show a clear `Order completed!` heading after the order is successfully placed. Tell the customer that an order confirmation email will be sent to their registered email address, and show the registered address so they can verify where it will be sent.
+
+The screen should also show:
 
 - Order number.
 - Purchased books.
 - Delivery details for physical books.
+- Order total, including shipping shown as Free (₹0).
 - Link to order history.
 
-### 3.7 Reviews And Ratings Flow
-
-Design the review flow for registered customers.
-
-Include:
-
-- Write review button on book detail page.
-- Rating selector.
-- Review text field.
-- Submit review button.
-- Success message.
-- Error and validation states.
-
-Reviews should display:
-
-- Customer name or display name.
-- Rating.
-- Review text.
-- Review date.
-- Ratings should use individual star icons/images matching the numeric rating instead of written text such as `5 stars`.
-
-### 3.8 Notifications
-
-Design a notification or message center covering:
-
-- Order confirmation.
-- Shipping updates.
-- Account-related messages.
-
-Each notification should show:
-
-- Notification title.
-- Short message.
-- Date/time.
-- Read/unread state.
-- Related order or book link where applicable.
-
-### 3.9 Admin Screens
+### 3.7 Admin Screens
 
 #### Admin Dashboard
 
@@ -514,7 +466,6 @@ Design an admin dashboard with:
 - Total books.
 - Recent orders.
 - Pending physical shipments.
-- Review activity.
 - Quick links to book and order management.
 
 #### Admin Book Management Page
@@ -528,7 +479,8 @@ Include:
 - Category.
 - Format availability.
 - Price.
-- Stock for physical books.
+- Current stock quantity for each physical format.
+- Availability based on tracked stock; only available quantities may be added/ordered.
 - Status.
 - Edit action.
 - Delete or remove action.
@@ -545,7 +497,7 @@ Design a form with:
 - Cover image upload placeholder.
 - Format selection: Paperback, Hardcover, or both.
 - Physical book price.
-- Physical stock quantity.
+- Required physical stock quantity for each enabled paperback/hardcover format.
 - Publish/unpublish status.
 - Save button.
 
@@ -568,6 +520,8 @@ Order detail view should show:
 - Purchased items.
 - Physical shipping status.
 
+Stock must be updated safely when an order is placed so concurrent checkouts cannot sell more copies than are available.
+
 ### 3.10 Navigation Requirements
 
 Use consistent navigation across the customer-facing app.
@@ -578,7 +532,6 @@ Customer navigation should include:
 - Books.
 - Categories.
 - Orders.
-- Notifications.
 - Account.
 - Cart.
 
@@ -587,8 +540,6 @@ Admin navigation should include:
 - Dashboard.
 - Books.
 - Orders.
-- Reviews.
-- Notifications.
 - Settings.
 
 Define clear navigation links between:
@@ -600,7 +551,7 @@ Define clear navigation links between:
 - Address & Payment to Checkout or Order Confirmation.
 - Checkout to Order Confirmation.
 - Order Confirmation to Order History.
-- Account Dashboard to Orders and Notifications.
+- Account Dashboard to Orders.
 - Admin Dashboard to Book Management and Order Management.
 
 ### 3.11 Component Consistency
@@ -617,10 +568,8 @@ Create reusable Figma components for:
 - Buttons.
 - Form fields.
 - Checkbox or toggle.
-- Rating stars.
 - Cart item row.
 - Order summary.
-- Notification item.
 - Admin table.
 - Status badge.
 - Modal/dialog.
@@ -662,7 +611,7 @@ Use the same typography scale across all customer-facing desktop screens:
 - Panel headings such as Filters, Payment, Shipping address, and Order Summary: 24px bold.
 - Body copy and form input values: 16px regular.
 - Book/card titles: 16px semi-bold.
-- Navigation, prices, ratings, buttons, and form labels: 14px.
+- Navigation, prices, buttons, and form labels: 14px.
 - Secondary metadata such as authors and search placeholder text: 13px.
 - Small metadata such as format labels: 12px.
 - Footer text: 13px regular.
@@ -704,7 +653,7 @@ Image rules:
 
 - Book covers should use realistic image proportions.
 - Text should not be placed directly over detailed cover art unless the image is darkened or the text is placed in a separate readable container.
-- Cover images must not overlap book titles, prices, format badges, ratings, or action buttons.
+- Cover images must not overlap book titles, prices, format badges, or action buttons.
 - Book card layouts should reserve fixed image space so cards remain aligned across rows.
 - Use object-fit behavior equivalent to `cover` or `contain` consistently.
 - Use cover images from publicly accessible sources where possible.

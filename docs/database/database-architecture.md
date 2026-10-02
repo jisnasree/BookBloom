@@ -7,34 +7,39 @@
 
 ## 1. Purpose and Scope
 
-This document proposes a relational data model for the BookBloom MVP: customer accounts, a physical-book catalog with paperback and hardcover formats, categories and authors, carts, checkout/orders, shipping, reviews, notifications, and admin operations. It includes field-level schema details, constraints, relationship cardinalities, lifecycle guidance, and an ER diagram.
+This document proposes a relational data model for the BookBloom MVP: customer accounts, a physical-book catalog with paperback and hardcover formats, categories and authors, carts, checkout/orders, shipping, and admin operations. It includes field-level schema details, constraints, relationship cardinalities, lifecycle guidance, and an ER diagram.
 
-This is a design specification, not a migration or application implementation. Figma is treated as evidence of visible interactions and data displayed, not as authorization to settle backend business policy. In particular, a payment-method selector or an inventory column in a screen does not answer the corresponding product open question.
+This is a design specification, not a migration or application implementation. The current product brief is authoritative for approved policies; Figma is treated as evidence of visible interactions and data displayed, not as authority to invent backend business rules.
 
-## 2. Review Findings and Decisions
+## 2. Scope Decisions
 
 ### Confirmed requirements
 
 - Purchasing requires an authenticated customer account.
 - Books are sold as physical copies in paperback and/or hardcover formats.
 - Physical order items need a shipping destination.
-- Registered customers can submit ratings/reviews.
+- BookBloom serves customers in India only; international shipping addresses are not supported.
+- Shipping is free for every order and must be recorded/displayed as INR 0.00.
+- Physical stock is required and checkout must prevent purchases exceeding available quantities.
+- Accepted payment methods are cards (American Express, Visa, Mastercard) and PayPal.
 - Customers and administrators see prices and totals in INR.
-- Customers need order history and notifications; administrators manage catalog and orders.
+- After authoritative order confirmation, customers see an Order Completed screen and receive an order-confirmation email at the email address registered on their account.
+- “Order completed” in the customer confirmation UI means checkout/order placement succeeded; it does not mean physical delivery or fulfillment is complete.
+- Administrators manage catalog and orders.
 
 ### Conflicts, gaps, and conservative recommendations
 
 | Topic | Evidence / issue | Proposed handling pending decision |
 | --- | --- | --- |
-| Payment methods | Requirements ask which methods to support; desktop mockup shows cards and PayPal, while the cart mockup limits brand indicators to Visa/Mastercard/Amex. UI evidence conflicts and does not identify a provider. | Store provider references and payment state only. Never persist PAN, CVV, or payment secrets. Confirm provider/methods before finalizing the payment integration. |
-| Inventory | Admin mockup includes stock; requirements explicitly ask whether to track inventory. | `PhysicalVariant.stock_quantity` is marked optional/provisional. Omit inventory checks/reservations until policy is approved. |
-| Shipping costs, taxes, discounts | Requirements ask whether these are in MVP; Figma shows shipping may be free but no authoritative calculation policy. | Persist immutable line prices and totals/currency. Avoid invented tax or fee rules; represent explicit fee/tax lines only after policy approval. |
+| Payment provider and lifecycle | Accepted methods are cards (American Express, Visa, Mastercard) and PayPal; provider selection and capture/refund behavior are unspecified. | Persist the selected method and safe provider references/state. Never persist PAN, CVV, payment credentials, or provider secrets. The customer confirmation screen and email are triggered only after authoritative order confirmation. |
+| Confirmation email delivery | An order-confirmation email to the registered account email is required; the delivery provider is unspecified. | Dispatch after the confirmation transaction commits, retry transient failures, and make delivery processing idempotent per order-confirmation event. Provider and durable delivery mechanism remain open. |
+| Inventory reservation release | Stock tracking and checkout enforcement are required, but exact reservation expiry and release behavior on payment failure/cancellation is unspecified. | Require and transactionally reserve available stock at order creation. Decide the exact release/expiry policy before implementation. |
+| Taxes and discounts | Shipping is free; India-specific tax treatment and discounts are not fully defined (coupons are out of MVP scope). | Persist immutable line prices and INR totals. Shipping is always INR 0.00; keep tax policy explicitly India-specific and do not invent rates or calculations. |
 | Tracking and fulfillment | Shipping updates/statuses are in scope, but tracking support and lifecycle are open. | Keep a minimal fulfillment status and optional carrier/tracking reference. Tracking data and transitions require operational policy. |
 | Cancellation/refund | Open question; payment status in the mockup is not a refund policy. | Do not design customer cancellation/refund mutations until lifecycle and provider behavior are decided. Reserve auditable payment/refund records for provider events if needed. |
-| Review moderation | Admin screen mentions review activity/admin navigation, but moderation is open. | Use `PENDING`, `PUBLISHED`, `REJECTED` only if moderation is approved; default recommendation is publish-on-submit with report/admin moderation deferred. Schema includes status to support the decision, but publication policy is unresolved. |
-| Account profile | Full name/email are required at registration; dashboard profile details unspecified. | Model required email and names; avoid expanding personal data fields without need. Addresses are separate reusable records, with order-time snapshots. |
+| Account profile and registration consent | Registration requires first name, last name, email, phone number, password, password confirmation, and acceptance of Terms & Conditions; dashboard profile details unspecified. | Model required email, names, and validated phone number. Record acceptance with a server-generated `terms_accepted_at`; do not persist password confirmation. Terms document/version tracking remains open unless product requires it. Addresses are separate reusable records, with order-time snapshots. |
 | Category values | Figma names example categories; requirement says broad book categories. | Categories are managed data, not a closed code enum; seed examples only if product approves. |
-| Address geography | Figma describes country and state selectors but does not define country coverage. | Store textual address components and ISO country code; do not impose one country's postal/state validation without an explicit geographic scope. |
+| India address validation | The product is India-only; the precise address-provider/deliverability verification process is unspecified. | Require country code `IN` and validate the Indian PIN format (six digits, first digit 1–9). Do not accept international addresses. |
 
 ## 3. Architecture Overview
 
@@ -43,22 +48,19 @@ Use a relational database (PostgreSQL is recommended for production; the exact e
 - `accounts`: `User`, `Address`
 - `catalog`: `Author`, `Category`, `Book`, `PhysicalVariant`
 - `commerce`: `Cart`, `CartItem`, `Order`, `OrderItem`, `Payment`, `Shipment`
-- `reviews`: `Review`
-- `notifications`: `Notification`
-
 Use Django's configured custom user model from the first migration. Use UUID primary keys for public-facing entities as a recommendation; internal integer keys are also acceptable if the project convention prefers them. All timestamps should be stored as timezone-aware UTC values. Monetary columns should be `DecimalField`, never floating point.
 
 ### Catalog structure
 
-`Book` is the shared bibliographic/catalog record. Each purchasable physical format is represented by a `PhysicalVariant` row, with `PAPERBACK` or `HARDCOVER` format, price, and optional stock. Each cart/order line points to one physical variant. Prices and descriptive identity are copied into order-item snapshots so catalog edits do not rewrite historical purchases.
+`Book` is the shared bibliographic/catalog record. Each purchasable physical format is represented by a `PhysicalVariant` row, with `PAPERBACK` or `HARDCOVER` format, price, and required stock. Each cart/order line points to one physical variant. Prices and descriptive identity are copied into order-item snapshots so catalog edits do not rewrite historical purchases.
 
 ### Order structure
 
-`Order` is a transaction aggregate owned by a customer. `OrderItem` snapshots each purchased physical variant, quantity, unit price, and currency. Every order requires physical delivery, represented by `Shipment`, which stores an immutable delivery contact and address snapshot.
+`Order` is a transaction aggregate owned by a customer. `OrderItem` snapshots each purchased physical variant, quantity, unit price, and currency. `Order.status=CONFIRMED` means the order placement/payment confirmation succeeded; it does not assert shipment or delivery completion. Physical fulfillment is tracked independently by `Shipment`, which stores an immutable delivery contact and address snapshot. “Order Completed” is the customer confirmation-screen label, not a persisted fulfillment state.
 
 ### Payment boundary
 
-Payment details are provider-owned. The application stores amount, currency, provider identifier/reference, state, and safe display metadata only. A payment success is established by a verified provider callback or server-to-server confirmation, not by the browser redirect. Do not store card number, CVV, PayPal credentials, or raw payment secrets.
+Accepted methods are card (`AMEX`, `VISA`, `MASTERCARD`) and PayPal. Payment details are provider-owned. The application stores amount, currency, provider identifier/reference, state, selected method, and safe display metadata only. A payment success is established by a verified provider callback or server-to-server confirmation, not by the browser redirect. Never store PAN, CVV, PayPal credentials, provider credentials, or raw payment secrets. Provider selection and capture/refund behavior remain open.
 
 ## 4. Django Schema Specification
 
@@ -74,14 +76,18 @@ Purpose: authenticated customer and staff identity. Django auth permissions/grou
 | `email` | `EmailField` | required | Unique case-insensitively; normalize before save. Use as login identifier if approved. |
 | `first_name` | `CharField(150)` | required | Registration name. |
 | `last_name` | `CharField(150)` | required | Registration name. |
-| `password` | Django auth password field | required | Store only a Django password hash; never serialize. |
+| `phone_number` | `CharField(32)` | required | Registration contact number. Validate and normalize to E.164 using a phone-number validation library; retain the leading `+` in storage. Exact accepted regions/format policy is not specified. |
+| `password` | Django auth password field | required | Store only the encoded hash produced by Django's password hashing APIs (`set_password()`/`create_user()`); never store or serialize plaintext. |
+| `terms_accepted_at` | `DateTimeField` | required for self-registered customer accounts; server-set | UTC-aware timestamp recorded only after the request explicitly accepts the Terms & Conditions. It is acceptance evidence, not a client-supplied timestamp. It may be nullable for staff/provisioned or legacy accounts that did not use customer registration; customer registration must always populate it. |
 | `is_active` | `BooleanField` | default `True` | Django authentication lifecycle. |
 | `is_staff` | `BooleanField` | default `False` | Admin-site access; protected, server-managed. |
 | `is_superuser` | `BooleanField` | default `False` | Django permission behavior; protected. |
 | `date_joined` | `DateTimeField` | `timezone.now` | UTC-aware. |
 | `updated_at` | `DateTimeField` | auto-updated | UTC-aware. |
 
-Constraints/indexes: unique normalized email. Use a database functional unique constraint on `Lower(email)` if supported by the configured engine, plus application normalization. Django groups/permissions are the authorization source. Email verification/password-reset token persistence should use Django's secure token workflow or a dedicated expiring, hashed-token table only if product requirements require persisted tokens.
+Registration request validation (serializer/service; not additional `User` columns): require `first_name`, `last_name`, `email`, `phone_number`, `password`, `password_confirmation`, and a true `terms_accepted` value. Reject missing/false acceptance and mismatched passwords before creating the account. `password_confirmation` is request-only: compare it with `password`, then discard it; never persist it, hash it separately, or include it in responses/logs. Set `terms_accepted_at` on the server when account creation succeeds. Validate phone syntax and normalize before persistence; do not claim phone ownership verification unless a separate product requirement defines a verification flow.
+
+Constraints/indexes: unique normalized email. Use a database functional unique constraint on `Lower(email)` if supported by the configured engine, plus application normalization. Validate phone number syntax and E.164 normalization in the registration serializer/service; database storage length is not a substitute for validation. Django groups/permissions are the authorization source. Preserve existing email/login and email-verification/password-reset conventions: use Django's secure token workflow or a dedicated expiring, hashed-token table only if product requirements require persisted tokens; this registration change does not add an OTP flow.
 
 Deletion: recommend soft deactivation/anonymization policy rather than cascading deletion of financial order history; account retention/legal policy is an open operational decision.
 
@@ -99,14 +105,14 @@ Purpose: customer's reusable shipping address. Checkout must copy address values
 | `address_line1` | `CharField(255)` | required | Street/address. |
 | `address_line2` | `CharField(255)` | optional | Apartment/unit. |
 | `city` | `CharField(120)` | required |  |
-| `state_region` | `CharField(120)` | required | Text to avoid assuming a country's state catalog. |
-| `postal_code` | `CharField(32)` | required | Country-specific validation not defined. |
-| `country_code` | `CharField(2)` | required | ISO 3166-1 alpha-2 recommended; validate uppercase. |
-| `phone` | `CharField(32)` | required | Normalize/validate according to supported geography. |
+| `state_region` | `CharField(120)` | required | Indian state/union territory name; use textual storage unless an approved canonical list is adopted. |
+| `postal_code` | `CharField(6)` | required | Indian PIN; validate exactly six ASCII digits with first digit 1–9 (`^[1-9][0-9]{5}$`). This checks format, not postal deliverability. |
+| `country_code` | `CharField(2)` | required, default `IN` | ISO 3166-1 alpha-2; database check constraint requires exactly `IN`. No international addresses. |
+| `phone` | `CharField(32)` | required | Contact phone; the supported shipping geography is India. Detailed phone normalization is not specified. |
 | `is_default` | `BooleanField` | default `False` | At most one default per user. |
 | `created_at`, `updated_at` | `DateTimeField` | auto | UTC-aware. |
 
-Constraints/indexes: index `(user, is_default)`; unique conditional `(user)` where `is_default=True` if the DB supports partial unique constraints. A transaction must unset the previous default and set the new one atomically.
+Constraints/indexes: check `country_code = 'IN'`; validate PIN format in serializer/model validation (and use a database check where supported); index `(user, is_default)`; unique conditional `(user)` where `is_default=True` if the DB supports partial unique constraints. A transaction must unset the previous default and set the new one atomically.
 
 Deletion: `CASCADE` with user for reusable address data, subject to account retention policy. `Order`/`Shipment` must not reference this mutable address as the sole historical record.
 
@@ -139,7 +145,7 @@ Constraints/indexes: unique `slug`; index `(parent, is_active)`. Categories such
 
 ### 4.5 Book
 
-Purpose: bibliographic/catalog record for a physical book offered in paperback and/or hardcover format.
+Purpose: bibliographic/catalog record for a physical book offered in paperback and/or hardcover format. Catalog star ratings are stored independently on this record; they are not customer-written reviews.
 
 | Field | Type | Required/default | Rules |
 | --- | --- | --- | --- |
@@ -150,15 +156,16 @@ Purpose: bibliographic/catalog record for a physical book offered in paperback a
 | `isbn_10` | `CharField(10)` | optional | Normalize; format validation; unique when non-null. |
 | `isbn_13` | `CharField(13)` | optional | Normalize/check digit; unique when non-null. |
 | `cover_image` | `ImageField` or storage key | optional | Public display media; storage provider not specified. |
+| `rating` | `DecimalField(2,1)` | optional (`null=True`, `blank=True`) | Catalog star-rating value from `0.0` through `5.0`; one decimal place. `NULL` means no catalog rating is available. The source and maintenance process are unresolved. |
 | `status` | `CharField(16)` | default `DRAFT` | `DRAFT`, `PUBLISHED`, `ARCHIVED`; client/customer cannot set. |
 | `published_at` | `DateTimeField` | optional | Catalog publication date, not product release date unless clarified. |
 | `created_at`, `updated_at` | `DateTimeField` | auto |  |
 
 Relationships: many-to-many with `Author` through `BookAuthor`; many-to-many with `Category` through `BookCategory` (or use a single category FK only if product confirms that every book has exactly one category). Both join tables should use `ForeignKey(Book, on_delete=CASCADE)` and `ForeignKey(Author|Category, on_delete=PROTECT)`: removing a book removes its classification/credit rows, while referenced authors/categories are retained unless an explicit catalog cleanup is performed. `BookCategory` has unique `(book, category)`. `BookAuthor` has unique `(book, author, role)` and index `(book, position)`.
 
-Constraints/indexes: unique slug; unique conditional ISBN fields; index `(status, published_at)`; full-text/search indexes are engine-specific and should match the actual title/author/category search requirements. Do not treat ratings or availability as manually maintained values without defining aggregation/cache behavior.
+Constraints/indexes: unique slug; unique conditional ISBN fields; `CheckConstraint(rating IS NULL OR 0 <= rating <= 5)`; index `(status, published_at)`; consider `(status, rating)` for published catalog filtering/sorting, subject to query-plan validation. Full-text/search indexes are engine-specific and should match the actual title/author/category search requirements. The catalog query must support filtering to the requested 1–5 star options and sorting by rating; because stored ratings may have one decimal place, define and document bucket boundaries for fractional values before exposing those filters. Use explicit null ordering for rating sorts so unrated books behave consistently.
 
-Deletion: use archive (`status=ARCHIVED`) rather than hard-delete when order lines or reviews exist. Variant deletion should be blocked if it has historical order lines.
+Deletion: use archive (`status=ARCHIVED`) rather than hard-delete when order lines exist. Variant deletion should be blocked if it has historical order lines.
 
 ### 4.6 PhysicalVariant
 
@@ -171,11 +178,11 @@ Purpose: purchasable physical format, either paperback or hardcover.
 | `format` | `CharField(16)` | required | `PAPERBACK`, `HARDCOVER`; values are supported by Figma. |
 | `price` | `DecimalField(12,2)` | required | Must be `>= 0`; INR policy applies. |
 | `currency` | `CharField(3)` | default `INR` | ISO 4217; enforce `INR` for MVP unless multi-currency is approved. |
-| `stock_quantity` | `PositiveIntegerField` | optional/provisional | Only meaningful if inventory tracking is approved. |
+| `stock_quantity` | `PositiveIntegerField` | required; no implicit default | Required nonnegative count of units currently available to sell; admin must provide it for every enabled physical format. |
 | `is_available` | `BooleanField` | default `True` | Admin-managed sellability; not equivalent to stock. |
 | `created_at`, `updated_at` | `DateTimeField` | auto |  |
 
-Constraints: unique `(book, format)` unless multiple editions/ISBNs per format are required; `price >= 0`; if inventory is enabled, `stock_quantity >= 0`. Index `(is_available, format, price)` for catalog filters. Do not equate positive stock with availability until inventory policy is confirmed.
+Constraints: unique `(book, format)` unless multiple editions/ISBNs per format are required; `price >= 0`; `stock_quantity >= 0`. Index `(is_available, format, price)` for catalog filters. Customer-facing availability requires both admin-managed `is_available=True` and `stock_quantity > 0`; catalog results and cart/checkout validation must use this rule. Checkout must reject quantities greater than current stock.
 
 ### 4.7 Cart and CartItem
 
@@ -214,20 +221,20 @@ Purpose: immutable commercial record for a customer's placed order.
 | `id` | `UUIDField` | required | Primary key. |
 | `order_number` | `CharField(32)` | required | Unique, non-sequential opaque human reference recommended. |
 | `user` | `ForeignKey(User)` | required | `PROTECT`; avoid cascade deletion. Any later anonymization must be an explicit retention workflow. |
-| `status` | `CharField(20)` | default `PENDING_PAYMENT` | Proposed states: `PENDING_PAYMENT`, `CONFIRMED`, `PROCESSING`, `COMPLETED`, `CANCELLED`; allowed transitions below. A failed payment attempt does not add an order state. Refund state should be separate if supported. |
+| `status` | `CharField(20)` | default `PENDING_PAYMENT` | States: `PENDING_PAYMENT`, `CONFIRMED`, `CANCELLED`. `CONFIRMED` means order placement/payment confirmation succeeded, not shipment completion. Physical fulfillment is represented by `Shipment.status`; do not add an order-level `COMPLETED` fulfillment state. A failed payment attempt does not add an order state. Refund state should be separate if supported. |
 | `currency` | `CharField(3)` | default `INR` | Immutable order currency. |
 | `subtotal` | `DecimalField(12,2)` | required | Snapshot from line totals; server-calculated. |
-| `shipping_amount` | `DecimalField(12,2)` | default `0.00` | Provisional field; policy unresolved. |
-| `tax_amount` | `DecimalField(12,2)` | default `0.00` | Provisional field; tax policy unresolved. |
+| `shipping_amount` | `DecimalField(12,2)` | required, default `0.00` | Always INR 0.00 for every order; persist and include as a separate line in displayed order totals. Enforce `shipping_amount = 0.00`. |
+| `tax_amount` | `DecimalField(12,2)` | required, default `0.00` | Server-calculated snapshot; India-specific tax policy and whether/how tax applies remain open. Do not infer the zero default as a tax decision. |
 | `discount_amount` | `DecimalField(12,2)` | default `0.00` | Provisional field; no coupons in MVP scope. |
 | `total` | `DecimalField(12,2)` | required | Server-calculated; check `>=0`, currency consistent. |
 | `placed_at` | `DateTimeField` | optional | Set when order is created/placed, distinct from creation if payment pending. |
-| `confirmed_at` | `DateTimeField` | optional | Set only after authoritative payment confirmation or approved pay-later flow. |
+| `confirmed_at` | `DateTimeField` | optional | Set only after authoritative payment confirmation. |
 | `created_at`, `updated_at` | `DateTimeField` | auto |  |
 
-Constraints/indexes: unique order number; check monetary fields non-negative; indexes `(user, -created_at)` and `(status, -created_at)`. Order status transitions must be performed by domain services, not direct general-purpose serializer writes.
+Constraints/indexes: unique order number; check monetary fields non-negative and `shipping_amount = 0.00`; indexes `(user, -created_at)` and `(status, -created_at)`. `total` is server-calculated from `subtotal + shipping_amount + tax_amount - discount_amount`; shipping therefore contributes exactly INR 0.00 and remains visible in order summaries. Order status transitions must be performed by domain services, not direct general-purpose serializer writes.
 
-Transitions: a failed payment attempt updates only its `Payment` row, leaving the order `PENDING_PAYMENT` and eligible for another attempt. A later verified provider success for any valid attempt on that same order may transition `PENDING_PAYMENT -> CONFIRMED`; do not require a new order after a failed attempt. Other proposed transitions are `CONFIRMED -> PROCESSING | CANCELLED` and `PROCESSING -> COMPLETED | CANCELLED`, with cancellation/fulfillment policy still unresolved. Only server-side domain services may transition order status after validating authoritative provider/operational events; never accept status from customer request serializers. Payment/refund state is separately tracked; do not infer `COMPLETED` merely from successful payment because shipment fulfillment may remain.
+Transitions: a failed payment attempt updates only its `Payment` row, leaving the order `PENDING_PAYMENT` and eligible for another attempt. A later verified provider success for any valid attempt on that same order may transition `PENDING_PAYMENT -> CONFIRMED`; do not require a new order after a failed attempt. `CONFIRMED -> CANCELLED` is subject to the unresolved cancellation policy. Fulfillment progress and completion belong to `Shipment.status` (including `DELIVERED`), not `Order.status`. Only server-side domain services may transition order status after validating authoritative provider/operational events; never accept status from customer request serializers. Payment/refund state is separately tracked. The customer may see “Order Completed” upon confirmation even while the shipment remains pending or in transit.
 
 ### 4.9 OrderItem
 
@@ -263,15 +270,15 @@ Purpose: required physical fulfillment destination/status snapshot. Every purcha
 | `address_line2` | `CharField(255)` | optional | Snapshot. |
 | `city` | `CharField(120)` | required | Snapshot. |
 | `state_region` | `CharField(120)` | required | Snapshot. |
-| `postal_code` | `CharField(32)` | required | Snapshot. |
-| `country_code` | `CharField(2)` | required | Snapshot. |
+| `postal_code` | `CharField(6)` | required | Indian PIN snapshot; exactly six ASCII digits, first digit 1–9. |
+| `country_code` | `CharField(2)` | required, default `IN` | Snapshot; check constraint requires `IN`. International destinations are rejected at checkout. |
 | `phone` | `CharField(32)` | required | Snapshot. |
 | `carrier` | `CharField(100)` | optional | Tracking provider policy open. |
 | `tracking_reference` | `CharField(200)` | optional | Sensitive enough to keep owner/admin-only. |
 | `shipped_at`, `delivered_at` | `DateTimeField` | optional | Set by authorized operational action/provider event. |
 | `created_at`, `updated_at` | `DateTimeField` | auto |  |
 
-Indexes: `(status, created_at)`, optional unique `(carrier, tracking_reference)` when both present. Create the required shipment atomically with every order at checkout, using the required selected address; do not permit order confirmation/fulfillment if shipment creation or address validation fails.
+Constraints/indexes: check `country_code = 'IN'`; validate the PIN format in the checkout path (and use a database check where supported); index `(status, created_at)`; optional unique `(carrier, tracking_reference)` when both present. Create the required shipment atomically with every order at checkout, using the required selected India address; do not permit order confirmation/fulfillment if shipment creation or address validation fails.
 
 Personal address snapshots require retention/access controls and must never be exposed to unrelated customers.
 
@@ -288,58 +295,23 @@ Purpose: provider-neutral payment attempt/transaction record. Multiple rows supp
 | `status` | `CharField(20)` | default `INITIATED` | `INITIATED`, `REQUIRES_ACTION`, `AUTHORIZED`, `CAPTURED`, `FAILED`, `CANCELLED`, `PARTIALLY_REFUNDED`, `REFUNDED`. Final states subject to provider. |
 | `amount` | `DecimalField(12,2)` | required | Non-negative; provider-confirmed amount. |
 | `currency` | `CharField(3)` | required | Must match order. |
-| `method_type` | `CharField(30)` | optional | Safe classification only (`CARD`, `PAYPAL`, etc.) once approved. |
-| `method_brand` | `CharField(30)` | optional | Safe brand label only; no PAN/CVV. |
+| `method_type` | `CharField(30)` | required | Choices: `CARD`, `PAYPAL`; accepted methods are fixed by product requirements. |
+| `method_brand` | `CharField(30)` | conditional | Required for `CARD`: `AMEX`, `VISA`, or `MASTERCARD`; must be `NULL` for `PAYPAL`. Enforce the method/brand combination. |
 | `last_four` | `CharField(4)` | optional | Only if provider returns and policy approves. |
 | `idempotency_key` | `UUIDField` | required | Unique per payment initiation, prevents duplicate charges on retry. |
 | `failure_code` | `CharField(100)` | optional | Sanitized provider code, not raw secret payload. |
 | `created_at`, `updated_at` | `DateTimeField` | auto |  |
 
-Constraints/indexes: unique `(provider, provider_reference)` where provider reference non-null; unique `idempotency_key`; `(order, created_at)`; amount non-negative. Store provider webhook event IDs in a separate deduplication table if provider callbacks are used. Do not store raw card data, CVV, provider credentials, or unredacted webhook secrets/payloads.
-
-### 4.12 Review
-
-Purpose: registered user's rating and written review of a book.
-
-| Field | Type | Required/default | Rules |
-| --- | --- | --- | --- |
-| `id` | `UUIDField` | required | Primary key. |
-| `book` | `ForeignKey(Book)` | required | `PROTECT`. |
-| `user` | `ForeignKey(User)` | required | `PROTECT` or anonymization policy. |
-| `rating` | `PositiveSmallIntegerField` | required | Check 1 through 5. |
-| `body` | `TextField` | required | Length limits and moderation policy to be decided. |
-| `status` | `CharField(16)` | default `PUBLISHED` (recommendation) | Proposed `PENDING`, `PUBLISHED`, `REJECTED`, `HIDDEN`; do not enable moderation workflow until approved. |
-| `created_at`, `updated_at` | `DateTimeField` | auto |  |
-
-Constraint: unique `(book, user)` is recommended to prevent duplicate reviews; whether edit/update is allowed is unresolved. Index `(book, status, -created_at)`. Verified-purchase status should be derived from a confirmed `OrderItem`, or recorded with a foreign key only after business rules are approved; do not accept it from client input. Average ratings should be computed from published reviews or cached with reliable invalidation.
-
-### 4.13 Notification
-
-Purpose: in-app event/message shown to one customer.
-
-| Field | Type | Required/default | Rules |
-| --- | --- | --- | --- |
-| `id` | `UUIDField` | required | Primary key. |
-| `user` | `ForeignKey(User)` | required | `CASCADE` or retention policy. |
-| `type` | `CharField(40)` | required | `ORDER_CONFIRMED`, `SHIPPING_UPDATE`, `ACCOUNT`, `OTHER`; extensible choices. |
-| `title` | `CharField(200)` | required |  |
-| `message` | `TextField` | required | Avoid secrets/sensitive payment data. |
-| `order` | `ForeignKey(Order)` | optional | `SET_NULL`. |
-| `book` | `ForeignKey(Book)` | optional | `SET_NULL`. |
-| `read_at` | `DateTimeField` | optional | Null = unread. |
-| `created_at` | `DateTimeField` | auto | UTC-aware. |
-
-Indexes: `(user, -created_at)`, `(user, read_at, -created_at)`. Use transaction outbox/event processing for reliable post-commit notification dispatch if email/push channels are later approved. Email notification support is explicitly unresolved; no email delivery state is modeled here.
+Constraints/indexes: unique `(provider, provider_reference)` where provider reference non-null; unique `idempotency_key`; `(order, created_at)`; amount non-negative; choices/check constraint for `method_type` and `method_brand` (`CARD` requires one allowed brand; `PAYPAL` requires no brand). Store provider webhook event IDs in a separate deduplication table if provider callbacks are used. Never store PAN, CVV, provider credentials, or unredacted webhook secrets/payloads.
 
 ## 5. Relationships and Cardinality
 
-- A user owns zero or more saved addresses, one active cart, zero or more orders, reviews, and notifications.
+- A user owns zero or more saved addresses, one active cart, and zero or more orders.
 - A cart contains zero or more cart items; each cart item references one required physical variant.
 - A book can have zero or more authors and categories, and zero or one physical variant per supported format.
 - An order has one or more order items; each item snapshots one required physical variant.
 - Every physical-only order has exactly one required shipment; checkout requires and snapshots a shipping address.
 - An order can have multiple payment attempts.
-- A review belongs to exactly one user and one book. A notification belongs to exactly one user and may optionally link to an order or book.
 
 ## 6. Mermaid ER Diagram
 
@@ -362,17 +334,13 @@ erDiagram
     PHYSICAL_VARIANT ||--o{ ORDER_ITEM : purchased_physical
     ORDER ||--|| SHIPMENT : ships
     ORDER ||--o{ PAYMENT : attempts
-    USER ||--o{ REVIEW : writes
-    BOOK ||--o{ REVIEW : receives
-    USER ||--o{ NOTIFICATION : receives
-    ORDER o|--o{ NOTIFICATION : references
-    BOOK o|--o{ NOTIFICATION : references
-
     USER {
         uuid id PK
         string email UK
         string first_name
         string last_name
+        string phone_number
+        datetime terms_accepted_at "nullable only for staff/provisioned or legacy accounts"
         boolean is_active
         boolean is_staff
     }
@@ -383,8 +351,8 @@ erDiagram
         string address_line1
         string city
         string state_region
-        string postal_code
-        string country_code
+        string postal_code "6-digit India PIN"
+        string country_code "IN only"
         boolean is_default
     }
     AUTHOR {
@@ -402,6 +370,7 @@ erDiagram
         string title
         string slug UK
         string isbn_13 UK
+        decimal rating "nullable 0.0-5.0"
         string status
     }
     BOOK_AUTHOR {
@@ -422,7 +391,7 @@ erDiagram
         string format
         decimal price
         string currency
-        int stock_quantity
+        int stock_quantity "required nonnegative available stock"
         boolean is_available
     }
     CART {
@@ -439,8 +408,11 @@ erDiagram
         uuid id PK
         uuid user_id FK
         string order_number UK
-        string status
+        string status "PENDING_PAYMENT CONFIRMED CANCELLED"
         decimal subtotal
+        decimal shipping_amount "INR 0.00"
+        decimal tax_amount
+        decimal discount_amount
         decimal total
         string currency
     }
@@ -458,12 +430,12 @@ erDiagram
     SHIPMENT {
         uuid id PK
         uuid order_id FK
-        string status
+        string status "PENDING PROCESSING SHIPPED DELIVERED FAILED CANCELLED"
         string recipient_name
         string address_line1
         string city
         string postal_code
-        string country_code
+        string country_code "IN only"
         string tracking_reference
     }
     PAYMENT {
@@ -474,41 +446,24 @@ erDiagram
         string status
         decimal amount
         string currency
+        string method_type "CARD or PAYPAL"
+        string method_brand "AMEX VISA MASTERCARD or null"
         uuid idempotency_key UK
-    }
-    REVIEW {
-        uuid id PK
-        uuid book_id FK
-        uuid user_id FK
-        int rating
-        string status
-        datetime created_at
-    }
-    NOTIFICATION {
-        uuid id PK
-        uuid user_id FK
-        uuid order_id FK
-        uuid book_id FK
-        string type
-        datetime read_at
-        datetime created_at
     }
 ```
 
-Mermaid note: Cart and order items have required physical-variant links; `OrderItem.book` must match `OrderItem.physical_variant.book` and is checked during order-line validation and creation. Every order has exactly one shipment, created with its required address snapshot in the checkout transaction.
+Mermaid note: Cart and order items have required physical-variant links; `OrderItem.book` must match `OrderItem.physical_variant.book` and is checked during order-line validation and creation. Every order has exactly one shipment, created with its required India address snapshot in the checkout transaction. Address and shipment country codes are constrained to `IN`; their PINs use India's six-digit format. `Order.shipping_amount` is constrained to INR 0.00.
 
 ## 7. Constraint, Index, and Query Summary
 
 | Area | Important constraint/index/query |
 | --- | --- |
-| Accounts | Unique normalized email; address lookup by `(user, is_default)`; one default address per user. |
-| Catalog | Unique book slug/ISBN; indexes by publication status; variant availability/format/price; author/category join indexes; full-text search title + author names + category as engine permits. |
+| Accounts | Unique normalized email; required validated/normalized `phone_number`; customer self-registration requires explicit true Terms acceptance and server-populated `terms_accepted_at`; password confirmation is request-only; address country check `country_code = 'IN'`; Indian PIN format validation (six digits, first digit 1–9); address lookup by `(user, is_default)`; one default address per user. |
+| Catalog | Unique book slug/ISBN; indexes by publication status; `Book.rating` nullable decimal constrained to 0.0–5.0; consider `(status, rating)` for rating filters/sorts and verify with query plans; explicitly order null ratings; define fractional-value star-filter buckets; required nonnegative variant stock; customer availability requires `is_available` and stock greater than zero; author/category join indexes; full-text search title + author names + category as engine permits. |
 | Cart | Unique active cart per user; one item per physical variant per cart; `MinValueValidator(1)` plus `CheckConstraint(quantity >= 1)`; fetch cart and items in a bounded query. |
-| Orders | Unique opaque order number; indexes by user/date and status/date; order lines immutable after confirmation; order-line quantity has `MinValueValidator(1)` plus `CheckConstraint(quantity >= 1)`; each line's book matches its physical variant at validation and creation; totals calculated server-side. |
-| Payment | Unique provider reference and idempotency key; callback deduplication; amount/currency validation against order. |
+| Orders | Unique opaque order number; indexes by user/date and status/date; order lines immutable after confirmation; order-line quantity has `MinValueValidator(1)` plus `CheckConstraint(quantity >= 1)`; each line's book matches its physical variant at validation and creation; totals calculated server-side; shipping is always INR 0.00 and included in the total. |
+| Payment | `method_type` is `CARD` or `PAYPAL`; card brand is `AMEX`, `VISA`, or `MASTERCARD`, while PayPal has no card brand; unique provider reference and idempotency key; callback deduplication; amount/currency validation against order. |
 | Fulfillment | Shipment status/date index; private tracking reference; each physical-only order requires exactly one shipment and checkout address snapshot. |
-| Reviews | Rating check 1-5; unique `(book,user)` recommended; published review index for detail-page listing. |
-| Notifications | User/date and user/read/date indexes; cursor pagination recommended for large feeds. |
 
 ## 8. Transaction and Concurrency Boundaries
 
@@ -516,65 +471,69 @@ Mermaid note: Cart and order items have required physical-variant links; `OrderI
 
 Perform checkout in one database transaction:
 
-1. Lock the user's cart and relevant variant rows where inventory policy requires it (`select_for_update`).
-2. Re-fetch authoritative availability and prices; reject stale/unavailable items with item-specific errors.
-3. Validate the required selected shipping address for the physical order.
-4. Create the order, its required shipment/address snapshot, and immutable item snapshots; validate each order line's book against `physical_variant.book` and compute totals with `Decimal` and the approved fee/tax policy.
-5. Create a payment attempt with a unique idempotency key, then commit before contacting a payment provider where possible. Use a new idempotency key for each retry attempt. Use a persisted payment-intent workflow/outbox if provider calls require durable coordination.
-6. Clear or mark cart items only according to the chosen payment initiation semantics; avoid losing the cart on payment failure. Failed attempts leave the order pending payment so a new attempt can be initiated for that order.
+1. Lock the user's cart and every requested `PhysicalVariant` row with `select_for_update`, in deterministic primary-key order to reduce deadlocks.
+2. Re-fetch authoritative availability and prices; reject stale/unavailable items or any quantity exceeding `stock_quantity` with item-specific errors. Verify `is_available=True` and sufficient stock.
+3. Validate the required selected shipping address has country code `IN` and a valid six-digit Indian PIN.
+4. Atomically decrement each variant's available `stock_quantity` by the ordered quantity as a reservation, and create the pending order, its required shipment/address snapshot, immutable item snapshots, and payment attempt in the same transaction. Any failure rolls back both order creation and stock decrements. Validate each order line's book against `physical_variant.book` and calculate totals with `Decimal` and a fixed INR 0.00 shipping amount; apply India tax or discounts only under an approved policy.
+5. Commit before contacting a payment provider where possible; do not hold database locks over external calls. Use a unique idempotency key per payment attempt and a persisted payment-intent workflow if provider calls require durable coordination.
+6. Clear or mark cart items according to payment initiation semantics. The exact reservation expiry/release behavior on payment failure or order cancellation is not defined; it must be decided before implementation. Preserve the pending order/payment attempt for retry as described above.
 
 Do not hold a database transaction open over slow external payment calls. Payment webhooks must be signature-verified, deduplicated by provider event ID, and idempotently update payment/order state.
 
 ### Payment confirmation
 
-In a transaction, validate provider event and amount/currency/reference, then update that payment attempt. A verified successful attempt may confirm its still-`PENDING_PAYMENT` order even if an earlier attempt failed; a failed attempt does not change order status. Apply order transitions only in the server-side domain service, never from client-supplied status. Enqueue notifications after commit or through a transactional outbox so database state and side effects do not drift.
+In a transaction, verify the provider event and amount/currency/reference, then update that payment attempt and transition the eligible order from `PENDING_PAYMENT` to `CONFIRMED`, setting `confirmed_at`. A verified successful attempt may confirm its still-pending order even if an earlier attempt failed; a failed attempt does not change order status. The customer confirmation screen and order-confirmation email must not be shown or dispatched based only on checkout submission, a browser redirect, or an unverified callback. They follow only authoritative order confirmation. Apply order transitions only in the server-side domain service, never from client-supplied status. Order confirmation is an order-state transition recorded on the order; shipment status and timestamps independently record fulfillment progress.
 
-### Inventory (only if approved)
+After the confirmation transaction commits, dispatch an order-confirmation email to the registered `User.email` and make the customer confirmation screen available. Use a post-commit hook/task enqueue so no email is sent for a rolled-back confirmation. Retry transient delivery failures without changing order or payment state. Make processing idempotent using a stable key derived from the order and confirmation event; use provider-side idempotency where supported. Email delivery is at-least-once unless the selected provider/dispatch mechanism supports stronger deduplication. If durable enqueue/retry across process failure is required, use a transactional outbox or equivalent persisted work record; this is an implementation reliability choice, not a generic notification feature or a required `Notification` model. Email provider, queue, and delivery guarantees remain open decisions. Email failure must not undo a confirmed order or block access to the confirmation screen.
 
-If inventory is enabled, decrement/reserve stock atomically under row locks or a conditional update. Decide reservation expiry, failed-payment release, overselling, and backorder behavior before enabling stock checks. The screen's stock column alone is not sufficient policy.
+### Inventory reservation
 
-### Reviews and denormalized aggregates
-
-Create/update reviews under a uniqueness constraint. Compute average/count from published rows or maintain a cache updated transactionally with tests; do not let client submissions write book rating aggregates.
+Inventory is mandatory. `stock_quantity` is the number of units currently available to sell; checkout reserves by decrementing it under row locks in the same transaction that creates the pending order. Concurrent checkouts therefore serialize on each variant and cannot reserve more than its available quantity. A conditional update (`stock_quantity >= requested_quantity`) is an alternative, provided every affected row is checked and all order/stock writes remain atomic. The exact reservation expiry and release/restock behavior after payment failure or cancellation remains open; do not implement an assumed timeout or release transition. Backorders are not in scope unless separately approved.
 
 ## 9. Privacy, Security, and Retention
 
 - Use Django password hashing and standard authentication/session or token security. Never return password hashes or auth secrets.
-- Apply object-level ownership checks to carts, orders, addresses, reviews, and notifications. Admin access must be separately permissioned and audited.
+- Registration must validate all required fields, reject mismatched password confirmation and missing/false Terms acceptance, and normalize/validate `phone_number` before creating the account. Use Django's password hashing API; password confirmation is request-only and must not be persisted, returned, or logged.
+- Set `terms_accepted_at` server-side only after explicit acceptance. Do not trust a client timestamp. Store no Terms content or redundant acceptance boolean unless a later audit/versioning requirement justifies it; Terms document/version tracking is an open question.
+- Apply object-level ownership checks to carts, orders, and addresses. Admin access must be separately permissioned and audited.
 - Do not store payment card PAN/CVV or provider credentials. Minimize provider metadata and sanitize errors.
 - Protect address, phone, order, and tracking data from public catalog APIs. Restrict to owner and authorized fulfillment staff.
 - Define account deletion/anonymization and order retention periods before launch. Financial and shipping records may need retention while personal profile access is removed; this is a legal/operational decision, not inferred here.
 - Add audit logging for admin catalog changes, order status transitions, and access to protected files/PII. Avoid logging raw request bodies or secrets.
-- Rate-limit registration/login, review submission, and payment initiation.
+- Rate-limit registration/login and payment initiation.
 
 ## 10. Requirements-to-Data Traceability
 
 | Requirement / screen evidence | Persistent data and rules |
 | --- | --- |
-| Registration/login/profile | `User`; unique normalized email; Django auth-managed password. |
-| Physical-book catalog, search, filters, book detail | `Book`, `Author`, `BookAuthor`, `Category`, `BookCategory`, `PhysicalVariant`; availability and prices are server-owned. |
+| Customer registration (registration page fields: first name, last name, email, phone number, password, confirm password, required Terms checkbox) | `User.first_name`, `last_name`, normalized unique `email`, validated `phone_number`, Django-hashed `password`, and server-recorded `terms_accepted_at`. Registration request validation requires a true acceptance value and matching password confirmation; confirmation is request-only and never persisted. Preserve existing email/login and email verification/password-reset conventions; no OTP flow is inferred. Terms document/version tracking remains open. |
+| Login/profile | `User`; unique normalized email and stored validated phone number; Django auth-managed password. Login continues to use the established email/auth convention. |
+| Physical-book catalog, search, filters, book detail; 1–5 star display, rating filtering and sorting | `Book.rating` stores an optional catalog rating independently from customer-written reviews; `Book`, `Author`, `BookAuthor`, `Category`, `BookCategory`, `PhysicalVariant`; availability and prices are server-owned. Rating source/maintenance and fractional-value filter bucket semantics remain unresolved. |
 | Physical-book cart | `Cart`, `CartItem`; each line references a physical format variant. |
 | Checkout and order history | `Order`, `OrderItem`; immutable price/title/format/currency snapshots. |
+| Successful checkout / Order Completed confirmation screen | `Order.status=CONFIRMED` and `Order.confirmed_at`; show only after authoritative confirmation. “Order Completed” means order placement/payment confirmation succeeded, not physical delivery or fulfillment completion; `Shipment.status` tracks fulfillment independently. |
+| Order confirmation email | Post-commit side effect addressed to the registered `User.email`, triggered only by authoritative transition to `Order.status=CONFIRMED`; retry transient failures and deduplicate per confirmation event. No notification persistence entity is required. Delivery provider and durable dispatch mechanism remain open. |
 | Physical address and saved addresses | `Address` for reusable data; `Shipment` for immutable delivery snapshot. |
-| Payment screen | `Payment`; provider-neutral payment state only. Card/PayPal display in Figma does not authorize storing payment details or confirm providers. |
-| Rating/review flow | `Review`; rating constraint 1-5, registered user FK, moderation/verified-purchase policy unresolved. |
-| Notifications/message center | `Notification`; per-user read state and optional order/book links. Delivery channels beyond in-app remain unresolved. |
+| Address & payment / checkout screens | `Address`, `Shipment`, `Payment`, `Order`; India-only country `IN`, six-digit PIN validation, accepted methods `CARD` (`AMEX`, `VISA`, `MASTERCARD`) and `PAYPAL`; never store PAN, CVV, or provider credentials. Provider choice and capture/refund behavior remain open. |
+| Cart and checkout availability | Required `PhysicalVariant.stock_quantity`; catalog shows purchasability only when enabled and stock is positive; checkout atomically reserves requested units under row locks and rejects insufficient stock. Reservation release/expiry after failure or cancellation remains open. |
+| Order summary and checkout totals | `Order.subtotal`, `shipping_amount`, `tax_amount`, `discount_amount`, `total`; shipping is persisted as INR 0.00 and shown on every order total. India tax treatment/rates/rounding remain open; discounts/coupons are outside MVP unless approved. |
 | Admin catalog/order management | Django staff/groups/permissions over catalog and order data; audit records recommended. |
-| Admin stock and shipment status UI | Provisional `PhysicalVariant.stock_quantity`, `Shipment.status`; policy and transitions require approval. |
+| Admin stock and shipment status UI | Required `PhysicalVariant.stock_quantity`, `Shipment.status`; fulfillment transitions and tracking policy remain open. |
 
 ## 11. Decisions Required Before Implementation
 
-1. Select payment provider(s), supported methods, capture/refund model, and webhook behavior. Confirm whether PayPal/card indicators in Figma are final.
-2. Decide whether stock is tracked; define reservation, oversell/backorder, and cancellation behavior.
-3. Define shipping fee, taxes, discounts, and total calculation/rounding policy. Confirm whether “free shipping” shown in any frame is a real rule or placeholder.
+1. Select payment provider(s) for the approved card brands and PayPal; define capture/refund model and webhook behavior. The accepted methods are not open.
+2. Define exact stock-reservation expiry and release/restock behavior on payment failure and order cancellation. Stock tracking and oversell prevention are required; backorders are not in scope unless approved.
+3. Define India-specific tax applicability, calculation, inclusion, and rounding; retain discounts/coupons as out of MVP unless product scope changes. Shipping is free for all orders and is not an open decision.
 4. Decide whether an order can ship to multiple addresses or split across shipments; this determines whether shipment is one-to-one with order.
-5. Confirm review eligibility (any registered customer vs verified purchaser), edit/delete, moderation, and one-review-per-book policy.
-6. Confirm whether notifications are in-app only or include email, and define delivery/retry preferences.
-7. Define cancellation/refund lifecycle, order status transitions, and who may perform each transition.
-8. Confirm supported delivery geography and address validation rules.
-9. Define user/order/address retention and account deletion/anonymization policy.
-10. Confirm whether a book may have multiple categories/authors and whether physical editions need ISBN-level variant identity.
+5. Define cancellation/refund lifecycle, order status transitions, and who may perform each transition.
+6. Decide whether Indian PIN/address validation should include an external postal deliverability check beyond the required six-digit format. International destinations remain unsupported.
+7. Define user/order/address retention and account deletion/anonymization policy.
+8. Confirm whether a book may have multiple categories/authors and whether physical editions need ISBN-level variant identity.
+9. Decide how catalog star ratings are sourced and maintained (for example, admin-entered, imported, or derived from another approved source). Define fractional-rating display/filter bucket behavior as well.
+10. Select the order-confirmation email provider and dispatch mechanism, including operational delivery/retry guarantees. The required recipient is the account's registered `User.email`; sending occurs only after authoritative order confirmation.
+11. Decide whether Terms & Conditions acceptance must be tied to a specific document version and, if so, how that version is identified and retained. Until decided, store the acceptance timestamp only; do not invent a `terms_version` field or versioning policy.
 
 ## 12. Validation Notes
 
-The ER diagram and field definitions are intended to align. Before implementation, validate the proposed cardinalities against decisions above, especially multiple shipment destinations, inventory, payment methods, and review eligibility. No Django project/configuration or model code is present in the inspected workspace, so this document cannot be validated against concrete Django/DRF versions or migrations yet.
+The ER diagram and field definitions are intended to align. Registration validation and the `User` fields now reflect the required names, email, phone number, password, confirmation, and Terms acceptance; password confirmation is request-only and acceptance time is server-recorded. Before implementation, validate the proposed cardinalities against decisions above, especially multiple shipment destinations and payment lifecycle. The approved India-only geography, required stock tracking, free shipping, accepted payment methods, and post-confirmation customer UI/email behavior are reflected throughout. No Django project/configuration or model code is present in the inspected workspace, so this document cannot be validated against concrete Django/DRF versions or migrations yet.
