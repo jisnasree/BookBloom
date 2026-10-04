@@ -51,6 +51,25 @@ Use a relational database (PostgreSQL is recommended for production; the exact e
 - `commerce`: `Cart`, `CartItem`, `Order`, `OrderItem`, `Payment`, `Shipment`
 Use Django's configured custom user model from the first migration. The authentication module owns identity, credentials, and auth lifecycle. The account module owns profile and saved-address data that are specific to the authenticated customer but not credential storage. Use UUID primary keys for public-facing entities as a recommendation; internal integer keys are also acceptable if the project convention prefers them. Store timestamps that are defined by a model as timezone-aware UTC values; do not add generic creation/update timestamps to every model. Monetary columns should be `DecimalField`, never floating point.
 
+### Planned application module to entity mapping
+
+Modules are application boundaries; they do not all require separate database tables. The mapping below assigns primary data ownership and identifies shared data used by other modules.
+
+| Planned module | Primary entities / data owned | Shared entities used |
+| --- | --- | --- |
+| Authentication | `User` identity and credential fields; Django-managed groups/permissions and authentication sessions/tokens | `User` account identity is referenced by Account, Cart, and Order |
+| Account | `Address`; customer profile fields remain on `User` | `User` |
+| Book Catalog | `Author`, `Category`, `Book`, `BookCategory`, `PhysicalVariant` | Catalog data is queried by Search and Filtering, Book Detail, Shopping Cart, Checkout, and Admin Management |
+| Search and Filtering | No separate entity; search indexes, if needed, are derived from catalog data | `Book`, `Author`, `Category`, `BookCategory`, `PhysicalVariant` |
+| Book Detail | No separate entity; serves catalog detail/read models | `Book`, `Author`, `Category`, `BookCategory`, `PhysicalVariant` |
+| Shopping Cart | `Cart`, `CartItem` | `User`, `PhysicalVariant` |
+| Checkout and Payment | `Order`, `OrderItem`, `Payment`; creates orders and payment attempts | `User`, `Cart`, `CartItem`, `PhysicalVariant`, `Address`; coordinates with Shipping to create the shipment snapshot |
+| Shipping | `Shipment`, including the immutable recipient and delivery-address snapshot | `Order`, `Address`, `User` |
+| Order Management | No separate entity; manages order-history and fulfillment workflows | `Order`, `OrderItem`, `Payment`, `Shipment`, `User` |
+| Admin Management | No separate entity; access is controlled through `User.is_staff` and Django groups/permissions | Catalog entities and `Order`, `OrderItem`, `Payment`, `Shipment` |
+
+`Search and Filtering`, `Book Detail`, `Order Management`, and `Admin Management` are service/workflow boundaries over existing entities rather than duplicate data stores. A saved `Address` is mutable account data; `Shipment` owns the checkout-time address snapshot so later address edits do not change order history.
+
 ### Catalog structure
 
 `Book` is the shared bibliographic/catalog record. Each purchasable physical format is represented by a `PhysicalVariant` row, with `PAPERBACK` or `HARDCOVER` format, price, and required stock. Each cart/order line points to one physical variant. Prices and descriptive identity are copied into order-item snapshots so catalog edits do not rewrite historical purchases.
@@ -326,6 +345,26 @@ Constraints/indexes: unique `(provider, provider_reference)` where provider refe
 - An order has one or more order items; each item snapshots one required physical variant.
 - Every physical-only order has exactly one required shipment; checkout requires and snapshots a shipping address.
 - An order can have multiple payment attempts.
+
+### Primary and Foreign Key Reference
+
+All primary keys are UUIDs. `UK` means the foreign key is also unique.
+
+| Table | Primary key | Foreign key(s) → referenced table | Relationship |
+|---|---|---|---|
+| `User` | `id` | — | — |
+| `Address` | `id` | `user_id` → `User.id` | User 1 : many addresses |
+| `Author` | `id` | — | — |
+| `Category` | `id` | `parent_id` → `Category.id` | Category 1 : many child categories; parent is optional |
+| `Book` | `id` | `author_id` → `Author.id` | Author 1 : many books |
+| `BookCategory` | `id` | `book_id` → `Book.id`; `category_id` → `Category.id` | Join table for Book many : many Category; `(book_id, category_id)` is unique |
+| `PhysicalVariant` | `id` | `book_id` → `Book.id` | Book 1 : many variants |
+| `Cart` | `id` | `user_id` → `User.id` (UK) | User 1 : 0–1 cart |
+| `CartItem` | `id` | `cart_id` → `Cart.id`; `physical_variant_id` → `PhysicalVariant.id` | Cart 1 : many items; variant 1 : many cart items |
+| `Order` | `id` | `user_id` → `User.id` | User 1 : many orders |
+| `OrderItem` | `id` | `order_id` → `Order.id`; `book_id` → `Book.id`; `physical_variant_id` → `PhysicalVariant.id` | Order 1 : many items; variant must belong to the referenced book |
+| `Shipment` | `id` | `order_id` → `Order.id` (UK) | Order 1 : 1 shipment |
+| `Payment` | `id` | `order_id` → `Order.id` | Order 1 : many payment attempts |
 
 ## 6. Mermaid ER Diagram
 

@@ -37,6 +37,87 @@ All monetary API values are two-decimal INR decimal **strings**, never JSON floa
 | Admin book management and archive | `GET /admin/books`, `GET /admin/books/{bookId}`, `POST /admin/books`, `PATCH /admin/books/{bookId}`, `POST /admin/books/{bookId}/archive` | `Book`, `PhysicalVariant`, `Author`, `Category`; staff-only, explicit price/stock per created format, archive rather than hard delete. |
 | Admin order list/detail and shipment update | `GET /admin/orders`, `GET /admin/orders/{orderId}`, `PATCH /admin/orders/{orderId}/fulfillment` | `Order`, `OrderItem`, `Payment`, `Shipment`; staff-only; fulfillment update changes shipment only. |
 
+## API Reference by Application Module
+
+Base path: `/api/v1`. JSON request/response bodies use camelCase. Unless marked public or provider-only, an endpoint requires `Authorization: Bearer <accessToken>`. Money is an INR decimal string with exactly two fractional digits (for example, `"1499.00"`). `page` defaults to `1`; `pageSize` defaults to `20` and cannot exceed `100`.
+
+### Authentication and Account
+
+| Feature | Method and endpoint | Request | Success response | Common errors |
+| --- | --- | --- | --- | --- |
+| Register | `POST /auth/register` (public) | JSON: `firstName`, `lastName`, `email`, `phoneNumber`, `password`, `passwordConfirmation`, `termsAccepted: true`. Confirmation is validated but not stored. | `201 AuthSession`: `{accessToken, tokenType, expiresAt, user}` | `400` invalid/mismatched fields; `409` email exists; `429` rate limited (`Retry-After`). |
+| Login | `POST /auth/login` (public) | JSON: `{email, password}` | `200 AuthSession` | `400` invalid shape; `401` generic invalid credentials; `429` rate limited. |
+| Logout | `POST /auth/logout` | No body; revokes presented token. | `204` no body | `401` missing/invalid token. |
+| View profile | `GET /me` | No body. | `200 Profile`: `{id, firstName, lastName, email, phoneNumber, termsAcceptedAt, isStaff}` | `401`. |
+| List saved addresses | `GET /addresses` | No body. | `200 Address[]` | `401`. |
+| Save address | `POST /addresses` | JSON required: `addressLine1`, `city`, `stateRegion`, `postalCode`, `countryCode: "IN"`, `phone`; optional: `label`, `company`, `addressLine2`, `isDefault`. PIN must match `^[1-9][0-9]{5}$`. | `201 Address` | `400` validation; `401`. |
+| Get address | `GET /addresses/{addressId}` | UUID path parameter. | `200 Address` | `401`; `404` missing or not owned. |
+| Update address | `PATCH /addresses/{addressId}` | UUID path parameter; JSON with one or more mutable address fields. Same India/PIN validation. | `200 Address` | `400`; `401`; `404`. |
+| Delete address | `DELETE /addresses/{addressId}` | UUID path parameter. | `204` no body | `401`; `404`. |
+
+Address response: `{id, label, company, addressLine1, addressLine2, city, stateRegion, postalCode, countryCode, phone, isDefault, createdAt, updatedAt}`.
+
+### Book Catalog, Search, and Detail
+
+| Feature | Method and endpoint | Request | Success response | Common errors |
+| --- | --- | --- | --- | --- |
+| Browse/search/filter books | `GET /books` (public) | Query: `page`, `pageSize`, `search`, `category` (slug), `author`, `format` (`PAPERBACK`/`HARDCOVER`), `minPrice`, `maxPrice`, `rating` (1–5), `ordering` (`newest`, `price_asc`, `price_desc`, `rating_asc`, `rating_desc`). Price bounds are inclusive INR strings. | `200 PaginatedBookList`: `{results: BookSummary[], pagination: {page, pageSize, totalItems, totalPages}}` | `400` invalid filters/pagination. |
+| View book detail | `GET /books/{bookId}` (public) | UUID path parameter. | `200 Book` (summary fields plus description, ISBNs, publication date) | `404` book unavailable/not found. |
+
+Book summary includes `{id, title, slug, author, categories, rating, coverImageUrl, variants}`. Each public variant includes `{id, format, price, currency, inStock, availableQuantity}`. Ratings are catalog data, not reviews.
+
+### Shopping Cart
+
+| Feature | Method and endpoint | Request | Success response | Common errors |
+| --- | --- | --- | --- | --- |
+| View cart | `GET /cart` | No body. | `200 Cart`: `{id, items, subtotal, currency, updatedAt}`; `items` contain `{id, physicalVariantId, title, format, quantity, unitPrice, lineTotal, currency, inStock}`. | `401`. |
+| Add cart item | `POST /cart/items` | JSON: `{physicalVariantId, quantity}`; optional `Idempotency-Key` UUID. No client price accepted. | `201 Cart` | `400`; `401`; `404` variant unavailable; `409` insufficient stock. |
+| Change item quantity | `PATCH /cart/items/{itemId}` | UUID path parameter; JSON: `{quantity}` (integer ≥ 1). | `200 Cart` | `400`; `401`; `404` item not owned/found; `409` insufficient stock. |
+| Remove cart item | `DELETE /cart/items/{itemId}` | UUID path parameter. | `204` no body | `401`; `404`. |
+
+### Checkout and Payments
+
+| Feature | Method and endpoint | Request | Success response | Common errors |
+| --- | --- | --- | --- | --- |
+| Place order | `POST /checkout` | Required `Idempotency-Key` UUID header. JSON: `{addressId}` for the customer's saved India address. Cart must be non-empty. | `201 Order`: order status, immutable items, INR totals, shipment snapshot, timestamps and payment-attempt summaries. Initially `PENDING_PAYMENT`; shipping is `"0.00"`. | `400`; `401`; `404` unavailable address/cart; `409` empty cart, stock conflict, unavailable variant, or idempotency conflict. |
+| Start payment attempt | `POST /orders/{orderId}/payment-attempts` | UUID path; required `Idempotency-Key` UUID header. JSON: `{methodType: "CARD", methodBrand: "AMEX"|"VISA"|"MASTERCARD"}` or `{methodType: "PAYPAL"}`. Do not send card or provider credentials. | `201 PaymentAttempt`: `{id, status, amount, currency, methodType, methodBrand?, lastFour?, createdAt, providerActionUrl?, clientAction?}` | `400`; `401`; `404`; `409` order not pending/idempotency conflict; `503` provider unavailable. |
+| Receive payment webhook | `POST /payments/webhooks/{provider}` (provider-only; no bearer token) | Required `X-Provider-Signature`; optional `X-Provider-Event-Id`; provider-native JSON event. Verify signature, order, amount, INR currency, reference, and event uniqueness. | `200` duplicate acknowledged; `202` accepted for processing. | `400` malformed/unsupported; `401` invalid signature; `503` retryable processing failure. |
+
+The payment webhook is authoritative for confirmation; browser redirects are not. Never store PAN, CVV, payment credentials, secrets, or raw webhook payloads.
+
+### Orders and Shipping
+
+| Feature | Method and endpoint | Request | Success response | Common errors |
+| --- | --- | --- | --- | --- |
+| List own order history | `GET /orders` | Query: `page`, `pageSize`, optional `status`, optional `fulfillmentStatus`. | `200 PaginatedOrderList`: `{results: Order[], pagination: PageInfo}` | `400`; `401`. |
+| View own order | `GET /orders/{orderId}` | UUID path parameter. | `200 Order` | `401`; `404` missing or not owned. |
+| Get confirmation receipt | `GET /orders/{orderId}/confirmation` | UUID path parameter. Order must be confirmed. | `200 OrderConfirmation`: `{order, registeredEmail, confirmationMessage}` | `401`; `404` missing/not owned; `409` not confirmed. |
+
+`Order` includes `{id, orderNumber, status, items, currency, subtotal, shippingAmount, taxAmount, discountAmount, total, placedAt, confirmedAt, paymentAttempts, shipment, createdAt}`. `Shipment` includes status and the immutable delivery snapshot. Shipment fulfillment status is separate from order/payment status.
+
+### Admin Management
+
+All endpoints in this module require an authenticated staff account with the appropriate Django staff/group permission.
+
+| Feature | Method and endpoint | Request | Success response | Common errors |
+| --- | --- | --- | --- | --- |
+| List catalog records | `GET /admin/books` | Query: `page`, `pageSize`, optional `status`, `search`. | `200 PaginatedAdminBookList` | `400`; `401`; `403`. |
+| Create book | `POST /admin/books` | JSON required: `title`, `slug`, `authorName`, `variants`; optional description, category IDs, ISBNs, cover URL, status. Each variant requires `format`, INR `price`, and `stockQuantity` (≥ 0). Optional `Idempotency-Key`. | `201 AdminBook` | `400`; `401`; `403`; `409` slug/ISBN conflict. |
+| Get catalog record | `GET /admin/books/{bookId}` | UUID path parameter. | `200 AdminBook` including staff-only status and stock fields | `401`; `403`; `404`. |
+| Update book/variants | `PATCH /admin/books/{bookId}` | UUID path; JSON partial metadata and/or variant updates by variant `id`. Include stock when changing it; omitted variants remain unchanged. | `200 AdminBook` | `400`; `401`; `403`; `404`; `409` uniqueness/history conflict. |
+| Archive book | `POST /admin/books/{bookId}/archive` | UUID path; optional `Idempotency-Key`; no body. | `200 AdminBook` | `401`; `403`; `404`. |
+| List all orders | `GET /admin/orders` | Query: `page`, `pageSize`, optional `status`, `fulfillmentStatus`, `orderNumber`. | `200 PaginatedOrderList` | `400`; `401`; `403`. |
+| Get order/customer/shipping detail | `GET /admin/orders/{orderId}` | UUID path parameter. | `200 AdminOrder` including customer and safe payment metadata | `401`; `403`; `404`. |
+| Update fulfillment | `PATCH /admin/orders/{orderId}/fulfillment` | UUID path; optional `Idempotency-Key`. JSON: `{status}`; optional `carrier`, `trackingReference`. | `200 Shipment` | `400`; `401`; `403`; `404`; `409` invalid shipment transition. |
+
+### Shared Errors and Response Rules
+
+Errors use `{code, message, requestId, details?}`. Validation errors may include `fieldErrors`, an object mapping field names to arrays of messages. Common statuses: `400` invalid request/query; `401` missing/invalid authentication; `403` insufficient staff permission; `404` absent or caller-inaccessible resource; `409` business-state, stock, or idempotency conflict; `429` rate limit with `Retry-After`; `503` temporary payment-provider/processing outage. `204` responses have no body. Responses must never expose password hashes, payment secrets, or raw provider events.
+
+### Planned features without a defined endpoint
+
+The requirements mention password recovery and account/profile management, but reset-token workflow, editable profile fields, and account preferences have not been specified in this API contract. Add endpoints for them only after those behaviors and fields are approved. Admins use the shared login endpoint; order confirmation email is a post-confirmation server-side action, not a client API.
+
 ## Entity Fields, Keys, and Relationships
 
 The following is the persisted entity inventory. Types are Django model field types; API serializers map these storage fields to the documented camelCase JSON properties. `PK` denotes a primary key, `FK` a foreign key, and `UK` a unique field or constraint. Full validation, deletion, and index rules are specified in the [database architecture](../database/database-architecture.md).
@@ -71,6 +152,170 @@ The following is the persisted entity inventory. Types are Django model field ty
 | `Book` / `PhysicalVariant` — `OrderItem` | Each item references one book and one physical variant; the variant must belong to the same book. Snapshot fields preserve purchase-time display and price. |
 | `Order` — `Shipment` | One order has exactly one shipment; `Shipment.order_id` is a unique one-to-one FK. |
 | `Order` — `Payment` | One order has zero or more payment attempts; each attempt has one required `order_id` FK. |
+
+### Copyable ER Diagram
+
+```mermaid
+erDiagram
+    USER ||--o{ ADDRESS : saves
+    USER ||--o| CART : owns
+    CART ||--o{ CART_ITEM : contains
+    PHYSICAL_VARIANT ||--o{ CART_ITEM : selected_as
+    AUTHOR ||--o{ BOOK : writes
+    BOOK ||--o{ BOOK_CATEGORY : classified_as
+    CATEGORY ||--o{ BOOK_CATEGORY : includes
+    CATEGORY o|--o{ CATEGORY : parent_of
+    BOOK ||--o{ PHYSICAL_VARIANT : offers
+    USER ||--o{ ORDER : places
+    ORDER ||--|{ ORDER_ITEM : contains
+    BOOK ||--o{ ORDER_ITEM : snapshot_of
+    PHYSICAL_VARIANT ||--o{ ORDER_ITEM : purchased_as
+    ORDER ||--|| SHIPMENT : ships
+    ORDER ||--o{ PAYMENT : payment_attempts
+
+    USER {
+        uuid id PK
+        varchar email UK
+        varchar first_name
+        varchar last_name
+        varchar phone_number
+        varchar password
+        datetime terms_accepted_at
+        boolean is_staff
+        datetime date_joined
+    }
+    ADDRESS {
+        uuid id PK
+        uuid user_id FK
+        varchar label
+        varchar company
+        varchar address_line1
+        varchar address_line2
+        varchar city
+        varchar state_region
+        varchar postal_code
+        varchar country_code
+        varchar phone
+        boolean is_default
+        datetime created_at
+        datetime updated_at
+    }
+    AUTHOR {
+        uuid id PK
+        varchar name
+    }
+    CATEGORY {
+        uuid id PK
+        uuid parent_id FK
+        varchar name
+        varchar slug UK
+        boolean is_active
+    }
+    BOOK {
+        uuid id PK
+        uuid author_id FK
+        varchar title
+        varchar slug UK
+        text description
+        varchar isbn_10 UK
+        varchar isbn_13 UK
+        decimal rating
+        varchar status
+        datetime published_at
+        datetime created_at
+        datetime updated_at
+    }
+    BOOK_CATEGORY {
+        uuid id PK
+        uuid book_id FK
+        uuid category_id FK
+    }
+    PHYSICAL_VARIANT {
+        uuid id PK
+        uuid book_id FK
+        varchar format
+        decimal price
+        varchar currency
+        int stock_quantity
+        boolean is_available
+        datetime updated_at
+    }
+    CART {
+        uuid id PK
+        uuid user_id FK, UK
+        datetime updated_at
+    }
+    CART_ITEM {
+        uuid id PK
+        uuid cart_id FK
+        uuid physical_variant_id FK
+        int quantity
+    }
+    ORDER {
+        uuid id PK
+        varchar order_number UK
+        uuid user_id FK
+        varchar status
+        varchar currency
+        decimal subtotal
+        decimal shipping_amount
+        decimal tax_amount
+        decimal discount_amount
+        decimal total
+        datetime placed_at
+        datetime confirmed_at
+        datetime created_at
+    }
+    ORDER_ITEM {
+        uuid id PK
+        uuid order_id FK
+        uuid book_id FK
+        uuid physical_variant_id FK
+        varchar title_snapshot
+        varchar format_snapshot
+        int quantity
+        decimal unit_price
+        decimal line_total
+        varchar currency
+    }
+    SHIPMENT {
+        uuid id PK
+        uuid order_id FK, UK
+        varchar status
+        varchar recipient_name
+        varchar address_line1
+        varchar address_line2
+        varchar city
+        varchar state_region
+        varchar postal_code
+        varchar country_code
+        varchar phone
+        varchar carrier
+        varchar tracking_reference
+        datetime shipped_at
+        datetime delivered_at
+        datetime created_at
+        datetime updated_at
+    }
+    PAYMENT {
+        uuid id PK
+        uuid order_id FK
+        varchar provider
+        varchar provider_reference
+        varchar status
+        decimal amount
+        varchar currency
+        varchar method_type
+        varchar method_brand
+        varchar last_four
+        uuid idempotency_key UK
+        varchar failure_code
+        datetime created_at
+        datetime updated_at
+    }
+```
+
+`BookCategory` has a unique constraint on `(book_id, category_id)`; `PhysicalVariant` has a unique constraint on `(book_id, format)`; `CartItem` has a unique constraint on `(cart_id, physical_variant_id)`. `Payment.provider_reference` is unique per provider when present. User password storage is an encoded Django hash only; never store plaintext passwords or payment secrets. `OrderItem.book_id` must match the book referenced by `physical_variant_id`.
 
 ## Security and Error Behavior
 
