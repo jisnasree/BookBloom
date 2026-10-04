@@ -1,0 +1,1466 @@
+openapi: 3.0.3
+info:
+  title: BookBloom API
+  version: 1.0.0
+  description: |
+    Versioned REST contract for the BookBloom MVP. The API serves India-only physical-book sales.
+    Orders are not confirmed until an authoritative payment success is verified. Fulfillment is
+    represented separately by Shipment. Provider choice, India tax policy, rating data ownership,
+    rating filter bucket boundaries, cancellation/refund policy, and inventory reservation release
+    policy remain unresolved; see docs/api/api-design.md. Each Book has one Author. Saved addresses
+    have no alternate recipient; Shipment.recipientName snapshots the registered customer's name.
+    The User schema has server-managed isStaff only, without isActive or isSuperuser fields.
+    Timestamps are returned only where defined by resource schemas, not automatically for every model.
+  contact:
+    name: BookBloom API maintainers
+servers:
+  - url: https://api.bookbloom.example/api/v1
+    description: Production URL assumption; replace with the deployed API host.
+  - url: http://localhost:8000/api/v1
+    description: Local development URL assumption.
+tags:
+  - name: Authentication
+    description: Customer and staff account registration, login, and logout.
+  - name: Account
+    description: The authenticated caller's own account profile.
+  - name: Catalog
+    description: Public physical-book search, filtering, and detail.
+  - name: Cart
+    description: The authenticated customer's physical-book cart.
+  - name: Addresses
+    description: The authenticated customer's saved India shipping addresses.
+  - name: Checkout
+    description: Physical order placement and stock validation.
+  - name: Payments
+    description: Payment initiation and verified provider callback boundary.
+  - name: Orders
+    description: The authenticated customer's order history and confirmation.
+  - name: Admin Catalog
+    description: Staff-only catalog and physical stock management.
+  - name: Admin Orders
+    description: Staff-only order inspection and shipment fulfillment updates.
+paths:
+  /auth/register:
+    post:
+      tags: [Authentication]
+      operationId: registerCustomer
+      summary: Register a customer account
+      description: |
+        Public endpoint. Creates a non-staff account. `passwordConfirmation` is validated and
+        discarded; `termsAccepted` must be true and the server records the acceptance timestamp.
+        Registration is rate-limited. Registration does not create an anonymous shopping cart.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistrationRequest'
+            example:
+              firstName: Asha
+              lastName: Menon
+              email: asha.menon@example.in
+              phoneNumber: '+919876543210'
+              password: Correct-Horse-9-Battery
+              passwordConfirmation: Correct-Horse-9-Battery
+              termsAccepted: true
+      responses:
+        '201':
+          description: Account created; no password or password confirmation is returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSession'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Email is already registered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      summary: Authenticate a customer or staff account
+      description: |
+        Public endpoint. Returns a bearer access token after credential verification. Staff accounts
+        use the same authentication route; staff authorization is enforced independently by admin
+        operations. Rate-limit attempts and return a generic credential error.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Credentials accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSession'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Invalid credentials or inactive account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      operationId: logout
+      summary: Revoke the current bearer token
+      description: Authenticated account. Revokes the presented token; clients should then discard it.
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Token revoked.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /me:
+    get:
+      tags: [Account]
+      operationId: getCurrentUser
+      summary: Get the current authenticated account
+      description: Authenticated account only; returns the caller's own profile.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Current account profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /books:
+    get:
+      tags: [Catalog]
+      operationId: listBooks
+      summary: Search, filter, sort, and paginate physical books
+      description: |
+        Public catalog. Returns published books and physical variants. Search covers title, author,
+        and category. Price bounds are inclusive INR amounts. `rating` selects the visible 1-5 rating
+        filter; fractional rating bucket membership is unresolved and must be finalized before
+        implementation. Ratings are catalog data, not customer reviews.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: search
+          in: query
+          description: Case-insensitive search across title, author, and category.
+          schema: { type: string, maxLength: 200 }
+        - name: category
+          in: query
+          description: Category slug.
+          schema: { type: string, maxLength: 120 }
+        - name: author
+          in: query
+          description: Case-insensitive author name search.
+          schema: { type: string, maxLength: 200 }
+        - name: format
+          in: query
+          schema: { $ref: '#/components/schemas/PhysicalFormat' }
+        - name: minPrice
+          in: query
+          description: Inclusive lower bound in INR; decimal string.
+          schema: { $ref: '#/components/schemas/Money' }
+        - name: maxPrice
+          in: query
+          description: Inclusive upper bound in INR; decimal string.
+          schema: { $ref: '#/components/schemas/Money' }
+        - name: rating
+          in: query
+          description: Requested catalog star filter from 1 through 5; fractional bucket rules are unresolved.
+          schema: { type: integer, minimum: 1, maximum: 5 }
+        - name: ordering
+          in: query
+          description: 'One supported ordering: newest, price_asc, price_desc, rating_asc, or rating_desc. Unrated books sort last for rating order; rating filter bucket boundaries for fractional ratings remain unresolved.'
+          schema:
+            type: string
+            enum: [newest, price_asc, price_desc, rating_asc, rating_desc]
+            default: newest
+      responses:
+        '200':
+          description: Matching books and pagination metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBookList'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /books/{bookId}:
+    get:
+      tags: [Catalog]
+      operationId: getBook
+      summary: Get book details and catalog rating
+      description: Public detail for a published book. Includes rating and purchasable paperback/hardcover variants; no review content is exposed.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      responses:
+        '200':
+          description: Book details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cart:
+    get:
+      tags: [Cart]
+      operationId: getCart
+      summary: Get the current customer's cart
+      description: Registered authenticated customer; only the caller's cart is returned. Current catalog prices are shown and are not locked until checkout.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Cart, including an empty cart when it has no items.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /cart/items:
+    post:
+      tags: [Cart]
+      operationId: addCartItem
+      summary: Add a physical format to the current cart
+      description: |
+        Registered authenticated customer. Variant must be active and available at request time;
+        checkout revalidates current price and stock. Duplicate variant lines are consolidated.
+        No client-supplied price is accepted.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CartItemCreate'
+      responses:
+        '201':
+          description: Cart line created or consolidated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Physical variant is not publicly available.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Quantity exceeds currently available stock.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /cart/items/{itemId}:
+    patch:
+      tags: [Cart]
+      operationId: updateCartItem
+      summary: Change a cart item's quantity
+      description: Registered authenticated customer; item must belong to caller's cart. Quantity is at least 1 and is checked against currently available stock, then checked again at checkout.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CartItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CartItemUpdate'
+      responses:
+        '200':
+          description: Updated cart.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Quantity exceeds currently available stock.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    delete:
+      tags: [Cart]
+      operationId: removeCartItem
+      summary: Remove an item from the current cart
+      description: Registered authenticated customer; item must belong to caller's cart. Idempotent for an already removed item.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CartItemId'
+      responses:
+        '204':
+          description: Item removed.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /addresses:
+    get:
+      tags: [Addresses]
+      operationId: listAddresses
+      summary: List the current customer's saved India addresses
+      description: Registered authenticated customer; returns only the caller's addresses.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Saved addresses.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Address' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Addresses]
+      operationId: createAddress
+      summary: Save an India shipping address
+      description: Registered authenticated customer. Country must be IN and PIN must match ^[1-9][0-9]{5}$. Setting a new default is atomic and clears the previous default.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddressInput'
+            example:
+              label: Home
+              company: null
+              addressLine1: '12, Lake View Road'
+              addressLine2: 'Apartment 4B'
+              city: Bengaluru
+              stateRegion: Karnataka
+              postalCode: '560001'
+              countryCode: IN
+              phone: '+919876543210'
+              isDefault: true
+      responses:
+        '201':
+          description: Address saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Address'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /addresses/{addressId}:
+    get:
+      tags: [Addresses]
+      operationId: getAddress
+      summary: Get one saved address
+      description: Registered authenticated customer; address must belong to caller.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AddressId'
+      responses:
+        '200':
+          description: Saved address.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Address' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Addresses]
+      operationId: updateAddress
+      summary: Update a saved address
+      description: Registered authenticated customer; address must belong to caller. India and PIN validation apply. Default changes are atomic.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AddressId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddressUpdate' }
+      responses:
+        '200':
+          description: Updated address.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Address' }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Addresses]
+      operationId: deleteAddress
+      summary: Delete a saved address
+      description: Registered authenticated customer; address must belong to caller. Historical shipment snapshots are unaffected.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AddressId'
+      responses:
+        '204':
+          description: Address deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /checkout:
+    post:
+      tags: [Checkout]
+      operationId: placeOrder
+      summary: Place a physical-book order and reserve stock
+      description: |
+        Registered authenticated customer only; there is no guest checkout. The server reads the
+        caller's cart, verifies the selected owned India address, recalculates current prices and
+        totals, and transactionally reserves all requested stock while creating a PENDING_PAYMENT
+        Order, immutable OrderItems, and one Shipment address snapshot. Shipping is INR 0.00.
+        This does not confirm payment or order completion. On insufficient stock, no partial order
+        or reservation is committed. Reservation release/expiry behavior is intentionally unspecified.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyRequired'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckoutRequest'
+            example:
+              addressId: 53e0ef55-06e5-47c2-bb38-0e8cb244a507
+      responses:
+        '201':
+          description: Pending-payment order and stock reservation created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Address or cart resource is unavailable to this account.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+        '409':
+          description: Empty cart, stale/unavailable variant, insufficient stock, or conflicting idempotency key.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+
+  /orders:
+    get:
+      tags: [Orders]
+      operationId: listOrders
+      summary: List the current customer's order history
+      description: Registered authenticated customer; orders are restricted to the caller and sorted newest first by default.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/OrderStatus' }
+        - name: fulfillmentStatus
+          in: query
+          description: Filter by the independent Shipment status.
+          schema: { $ref: '#/components/schemas/ShipmentStatus' }
+      responses:
+        '200':
+          description: Customer's paginated orders.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedOrderList' }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /orders/{orderId}:
+    get:
+      tags: [Orders]
+      operationId: getOrder
+      summary: Get an order and its fulfillment state
+      description: Registered authenticated customer; order must belong to caller. Payment metadata is limited to safe method/status/reference fields. Fulfillment remains separate from order confirmation.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Order detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders/{orderId}/confirmation:
+    get:
+      tags: [Orders]
+      operationId: getOrderConfirmation
+      summary: Get the confirmed order receipt for the completion screen
+      description: |
+        Registered authenticated customer; order must belong to caller and be CONFIRMED. Returns
+        the registered account email for display and the confirmation receipt details. This endpoint
+        is unavailable before authoritative payment success. It does not imply shipment delivery.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Confirmed order receipt.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderConfirmation' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Order does not exist or is not owned by the caller.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+        '409':
+          description: Order has not yet been authoritatively confirmed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+
+  /orders/{orderId}/payment-attempts:
+    post:
+      tags: [Payments]
+      operationId: initiatePaymentAttempt
+      summary: Initiate a payment attempt for a pending order
+      description: |
+        Registered authenticated customer; order must belong to caller and remain PENDING_PAYMENT.
+        Supported method types are CARD (brand AMEX, VISA, or MASTERCARD) and PAYPAL. No PAN, CVV,
+        cardholder credentials, PayPal credentials, or provider secret is accepted. Provider-hosted
+        payment UI/tokenization is required; this endpoint returns only a provider action URL or
+        opaque non-secret client action. An initiation is not evidence of successful payment.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+        - $ref: '#/components/parameters/IdempotencyKeyRequired'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentAttemptRequest' }
+            examples:
+              card:
+                value: { methodType: CARD, methodBrand: VISA }
+              paypal:
+                value: { methodType: PAYPAL }
+      responses:
+        '201':
+          description: Payment attempt created or idempotently replayed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentAttempt' }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Order is not pending payment or idempotency key conflicts with a different request.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+        '503':
+          description: Payment provider is temporarily unavailable; retry with the same idempotency key.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+
+  /payments/webhooks/{provider}:
+    post:
+      tags: [Payments]
+      operationId: receivePaymentWebhook
+      summary: Receive a provider payment event
+      description: |
+        Provider-to-server callback; no customer bearer token. The provider adapter must authenticate
+        and verify the provider signature over the raw request before processing, validate the
+        provider reference, order, amount, and INR currency, and deduplicate provider event IDs.
+        A verified authoritative success may atomically mark Payment successful and transition the
+        Order from PENDING_PAYMENT to CONFIRMED. Browser redirects are not authoritative. After the
+        confirmation transaction commits, expose the confirmation receipt and enqueue confirmation
+        email to the registered User.email with retry and per-order idempotency. Provider-specific
+        signature header and payload remain adapter-defined because no provider is selected.
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: Configured provider identifier; allowed values depend on the unresolved provider selection.
+          schema: { type: string, minLength: 1, maxLength: 40 }
+        - name: X-Provider-Signature
+          in: header
+          required: true
+          description: Provider-specific signature material; exact format is adapter-defined.
+          schema: { type: string, minLength: 1 }
+        - name: X-Provider-Event-Id
+          in: header
+          required: false
+          description: Provider event identifier when supplied; required for deduplication by providers that support it.
+          schema: { type: string, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Provider-native JSON event, interpreted only after signature verification by the configured adapter.
+              additionalProperties: true
+      responses:
+        '200':
+          description: Valid duplicate event acknowledged without repeating side effects.
+        '202':
+          description: Valid event accepted for idempotent processing.
+        '400':
+          description: Malformed or unsupported event.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+        '401':
+          description: Provider signature missing or invalid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+        '503':
+          description: Temporary processing failure; provider may retry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+
+  /admin/books:
+    get:
+      tags: [Admin Catalog]
+      operationId: adminListBooks
+      summary: List catalog records for staff management
+      description: Staff-only (Django staff permission/group required); includes draft and archived records and physical stock.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/BookStatus' }
+        - name: search
+          in: query
+          schema: { type: string, maxLength: 200 }
+      responses:
+        '200':
+          description: Staff catalog page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedAdminBookList' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+    post:
+      tags: [Admin Catalog]
+      operationId: adminCreateBook
+      summary: Create a catalog book and its physical variants
+      description: Staff-only. Every enabled paperback/hardcover variant requires a nonnegative price in INR and an explicitly supplied stock quantity. Variants omitted from the request are not created. Prices, status, stock, and rating are server-controlled catalog data.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminBookCreate' }
+      responses:
+        '201':
+          description: Catalog record created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminBook' }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Slug or ISBN conflicts with an existing catalog record.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+
+  /admin/books/{bookId}:
+    get:
+      tags: [Admin Catalog]
+      operationId: adminGetBook
+      summary: Get a catalog record for staff management
+      description: Staff-only, including draft or archived records.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      responses:
+        '200':
+          description: Catalog record and variants.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminBook' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Admin Catalog]
+      operationId: adminUpdateBook
+      summary: Update book metadata, format prices, and stock
+      description: |
+        Staff-only. Partial update of catalog fields and existing physical variants by variant ID.
+        A variant's stock quantity remains required on create; omitted variants on this PATCH are
+        unchanged. Existing order snapshots are immutable. Catalog rating is staff-maintained data
+        independent data; its source and maintenance process are unresolved and must not be inferred from customer reviews.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminBookUpdate' }
+      responses:
+        '200':
+          description: Updated catalog record.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminBook' }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: ISBN/slug conflict or variant cannot be changed due to historical order references.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+
+  /admin/books/{bookId}/archive:
+    post:
+      tags: [Admin Catalog]
+      operationId: adminArchiveBook
+      summary: Archive a catalog book
+      description: Staff-only soft archive. Historical order items remain readable; archived books are excluded from the public catalog and cannot be newly added to carts. Idempotent when already archived.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      responses:
+        '200':
+          description: Archived catalog record.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminBook' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/orders:
+    get:
+      tags: [Admin Orders]
+      operationId: adminListOrders
+      summary: List customer orders for staff
+      description: Staff-only. Order confirmation and Shipment fulfillment status are separate filters and fields.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/OrderStatus' }
+        - name: fulfillmentStatus
+          in: query
+          schema: { $ref: '#/components/schemas/ShipmentStatus' }
+        - name: orderNumber
+          in: query
+          schema: { type: string, maxLength: 32 }
+      responses:
+        '200':
+          description: Staff order page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedOrderList' }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/orders/{orderId}:
+    get:
+      tags: [Admin Orders]
+      operationId: adminGetOrder
+      summary: Get order, payment, customer, and shipment details
+      description: Staff-only. Shipping/contact and tracking data are restricted operational data; access should be audited.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Staff order detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminOrder' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/orders/{orderId}/fulfillment:
+    patch:
+      tags: [Admin Orders]
+      operationId: adminUpdateOrderFulfillment
+      summary: Update an order's shipment fulfillment status
+      description: |
+        Staff-only. Updates Shipment.status only, never Order.status or Payment.status. The server
+        validates the configured allowed transition and records actor/time; unknown or disallowed
+        transitions return 409. Exact transition graph, tracking provider, and tracking guarantees
+        remain operational decisions and must be approved before enabling transitions.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FulfillmentUpdate' }
+      responses:
+        '200':
+          description: Updated shipment state; order confirmation state is unchanged.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Shipment' }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Requested fulfillment transition is not allowed for the current shipment state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque access token
+      description: |
+        Assumed bearer-token contract. Token technology, expiry, refresh, and transport hardening
+        must be selected/configured before implementation; never place tokens in URLs.
+  parameters:
+    Page:
+      name: page
+      in: query
+      description: 1-based page number.
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      description: Results per page, capped at 100.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    BookId:
+      name: bookId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CartItemId:
+      name: itemId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    AddressId:
+      name: addressId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IdempotencyKeyRequired:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Client-generated UUID. Repeating the same key and request replays the original result; reusing it with a different request returns 409.
+      schema: { type: string, format: uuid }
+    IdempotencyKeyOptional:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Client-generated UUID for safe retry. Where honored, same key/request replays the original result; a changed request with the same key returns 409.
+      schema: { type: string, format: uuid }
+  responses:
+    ValidationError:
+      description: Invalid request fields or query parameters.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ValidationError' }
+    Unauthorized:
+      description: Missing, expired, or revoked bearer token.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+    Forbidden:
+      description: Authenticated account lacks the required staff permission.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+    NotFound:
+      description: Resource not found or not visible to the caller.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+    RateLimited:
+      description: Rate limit exceeded; retry after the indicated interval.
+      headers:
+        Retry-After:
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+  schemas:
+    Money:
+      type: string
+      pattern: '^(0|[1-9][0-9]{0,9})\.[0-9]{2}$'
+      description: Decimal string with exactly two fractional digits, interpreted as INR. Never a JSON number/float.
+      example: '1499.00'
+    Currency:
+      type: string
+      enum: [INR]
+      description: India-only MVP currency.
+    PhysicalFormat:
+      type: string
+      enum: [PAPERBACK, HARDCOVER]
+    BookStatus:
+      type: string
+      enum: [DRAFT, PUBLISHED, ARCHIVED]
+    OrderStatus:
+      type: string
+      enum: [PENDING_PAYMENT, CONFIRMED, CANCELLED]
+      description: CONFIRMED means authoritative payment/order confirmation, not delivery. Cancellation policy remains unresolved.
+    ShipmentStatus:
+      type: string
+      enum: [PENDING, PROCESSING, SHIPPED, DELIVERED, FAILED, CANCELLED]
+      description: Physical fulfillment lifecycle, independent of Order.status; allowed transitions require approved operational policy.
+    ApiError:
+      type: object
+      required: [code, message, requestId]
+      properties:
+        code: { type: string, example: validation_error }
+        message: { type: string, example: The request could not be completed. }
+        requestId: { type: string, description: Correlation ID for support and server logs. }
+        details:
+          type: object
+          additionalProperties: true
+          description: Optional structured details; must not expose secrets or internal provider payloads.
+    ValidationError:
+      allOf:
+        - $ref: '#/components/schemas/ApiError'
+        - type: object
+          properties:
+            code: { enum: [validation_error] }
+            fieldErrors:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+              example: { postalCode: [Enter a valid six-digit India PIN.] }
+    AuthSession:
+      type: object
+      required: [accessToken, tokenType, expiresAt, user]
+      properties:
+        accessToken: { type: string, description: Opaque bearer token; return only to the authenticated client and never log it. }
+        tokenType: { type: string, enum: [Bearer] }
+        expiresAt: { type: string, format: date-time }
+        user: { $ref: '#/components/schemas/Profile' }
+    RegistrationRequest:
+      type: object
+      additionalProperties: false
+      required: [firstName, lastName, email, phoneNumber, password, passwordConfirmation, termsAccepted]
+      properties:
+        firstName: { type: string, minLength: 1, maxLength: 150 }
+        lastName: { type: string, minLength: 1, maxLength: 150 }
+        email: { type: string, format: email, maxLength: 254 }
+        phoneNumber: { type: string, minLength: 8, maxLength: 32, description: Validated and normalized by the server; India registration policy must be finalized. }
+        password: { type: string, minLength: 12, maxLength: 128, format: password, writeOnly: true }
+        passwordConfirmation: { type: string, minLength: 12, maxLength: 128, format: password, writeOnly: true }
+        termsAccepted: { type: boolean, enum: [true] }
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password, writeOnly: true }
+    Profile:
+      type: object
+      required: [id, firstName, lastName, email, phoneNumber, termsAcceptedAt, isStaff]
+      properties:
+        id: { type: string, format: uuid }
+        firstName: { type: string, maxLength: 150 }
+        lastName: { type: string, maxLength: 150 }
+        email: { type: string, format: email }
+        phoneNumber: { type: string, maxLength: 32 }
+        termsAcceptedAt: { type: string, nullable: true, format: date-time, description: Null only for staff/provisioned or legacy records as specified in the database design. }
+        isStaff: { type: boolean, readOnly: true }
+    PageInfo:
+      type: object
+      required: [page, pageSize, totalItems, totalPages]
+      properties:
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        totalItems: { type: integer, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+    PaginatedBookList:
+      type: object
+      required: [results, pagination]
+      properties:
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/BookSummary' }
+        pagination: { $ref: '#/components/schemas/PageInfo' }
+    PaginatedAdminBookList:
+      type: object
+      required: [results, pagination]
+      properties:
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/AdminBook' }
+        pagination: { $ref: '#/components/schemas/PageInfo' }
+    PaginatedOrderList:
+      type: object
+      required: [results, pagination]
+      properties:
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/Order' }
+        pagination: { $ref: '#/components/schemas/PageInfo' }
+    BookSummary:
+      type: object
+      required: [id, title, slug, author, categories, rating, variants]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        slug: { type: string }
+        author: { type: string, minLength: 1, maxLength: 200 }
+        categories:
+          type: array
+          items: { type: string }
+        rating:
+          type: number
+          nullable: true
+          minimum: 0
+          maximum: 5
+          multipleOf: 0.1
+          description: Catalog rating, independent of reviews; null means unrated. Provider/maintenance source is unresolved.
+        coverImageUrl: { type: string, nullable: true, format: uri }
+        variants:
+          type: array
+          items: { $ref: '#/components/schemas/PublicPhysicalVariant' }
+    Book:
+      allOf:
+        - $ref: '#/components/schemas/BookSummary'
+        - type: object
+          required: [description]
+          properties:
+            description: { type: string, nullable: true }
+            isbn10: { type: string, nullable: true, pattern: '^[0-9Xx]{10}$' }
+            isbn13: { type: string, nullable: true, pattern: '^[0-9]{13}$' }
+            publishedAt: { type: string, nullable: true, format: date-time }
+    PublicPhysicalVariant:
+      type: object
+      required: [id, format, price, currency, inStock, availableQuantity]
+      properties:
+        id: { type: string, format: uuid }
+        format: { $ref: '#/components/schemas/PhysicalFormat' }
+        price: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        inStock: { type: boolean, description: True only if enabled and available stock is greater than zero. }
+        availableQuantity: { type: integer, minimum: 0, description: Public stock availability; exact display/exposure policy should be reviewed before launch. }
+    CartItemCreate:
+      type: object
+      additionalProperties: false
+      required: [physicalVariantId, quantity]
+      properties:
+        physicalVariantId: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1 }
+    CartItemUpdate:
+      type: object
+      additionalProperties: false
+      required: [quantity]
+      properties:
+        quantity: { type: integer, minimum: 1 }
+    Cart:
+      type: object
+      required: [id, items, subtotal, currency, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CartItem' }
+        subtotal: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        updatedAt: { type: string, format: date-time }
+    CartItem:
+      type: object
+      required: [id, physicalVariantId, title, format, quantity, unitPrice, lineTotal, currency, inStock]
+      properties:
+        id: { type: string, format: uuid }
+        physicalVariantId: { type: string, format: uuid }
+        title: { type: string }
+        format: { $ref: '#/components/schemas/PhysicalFormat' }
+        quantity: { type: integer, minimum: 1 }
+        unitPrice: { $ref: '#/components/schemas/Money' }
+        lineTotal: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        inStock: { type: boolean }
+    AddressInput:
+      type: object
+      additionalProperties: false
+      required: [addressLine1, city, stateRegion, postalCode, countryCode, phone]
+      properties:
+        label: { type: string, nullable: true, maxLength: 40 }
+        company: { type: string, nullable: true, maxLength: 200 }
+        addressLine1: { type: string, minLength: 1, maxLength: 255 }
+        addressLine2: { type: string, nullable: true, maxLength: 255 }
+        city: { type: string, minLength: 1, maxLength: 120 }
+        stateRegion: { type: string, minLength: 1, maxLength: 120 }
+        postalCode: { type: string, pattern: '^[1-9][0-9]{5}$' }
+        countryCode: { type: string, enum: [IN] }
+        phone: { type: string, minLength: 8, maxLength: 32 }
+        isDefault: { type: boolean, default: false }
+    AddressUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        label: { type: string, nullable: true, maxLength: 40 }
+        company: { type: string, nullable: true, maxLength: 200 }
+        addressLine1: { type: string, minLength: 1, maxLength: 255 }
+        addressLine2: { type: string, nullable: true, maxLength: 255 }
+        city: { type: string, minLength: 1, maxLength: 120 }
+        stateRegion: { type: string, minLength: 1, maxLength: 120 }
+        postalCode: { type: string, pattern: '^[1-9][0-9]{5}$' }
+        countryCode: { type: string, enum: [IN] }
+        phone: { type: string, minLength: 8, maxLength: 32 }
+        isDefault: { type: boolean }
+    Address:
+      allOf:
+        - $ref: '#/components/schemas/AddressInput'
+        - type: object
+          required: [id, createdAt, updatedAt]
+          properties:
+            id: { type: string, format: uuid, readOnly: true }
+            createdAt: { type: string, format: date-time, readOnly: true }
+            updatedAt: { type: string, format: date-time, readOnly: true }
+    CheckoutRequest:
+      type: object
+      additionalProperties: false
+      required: [addressId]
+      properties:
+        addressId: { type: string, format: uuid, description: Must belong to the authenticated customer and be a valid India address. }
+    Order:
+      type: object
+      required: [id, orderNumber, status, items, currency, subtotal, shippingAmount, taxAmount, discountAmount, total, shipment, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        orderNumber: { type: string, maxLength: 32 }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/OrderItem' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        subtotal: { $ref: '#/components/schemas/Money' }
+        shippingAmount:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: Always 0.00 INR.
+          enum: ['0.00']
+        taxAmount:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: Server-calculated under the India tax policy once approved; do not infer a tax exemption from the schema default.
+        discountAmount:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: 0.00 in the MVP absent an approved discount policy.
+        total: { $ref: '#/components/schemas/Money' }
+        placedAt: { type: string, nullable: true, format: date-time }
+        confirmedAt: { type: string, nullable: true, format: date-time, description: Set only after authoritative payment success. }
+        paymentAttempts:
+          type: array
+          items: { $ref: '#/components/schemas/PaymentAttemptSummary' }
+        shipment: { $ref: '#/components/schemas/Shipment' }
+        createdAt: { type: string, format: date-time }
+    OrderItem:
+      type: object
+      required: [id, bookId, physicalVariantId, title, format, quantity, unitPrice, lineTotal, currency]
+      properties:
+        id: { type: string, format: uuid }
+        bookId: { type: string, format: uuid }
+        physicalVariantId: { type: string, format: uuid }
+        title: { type: string, description: Immutable title_snapshot. }
+        format: { $ref: '#/components/schemas/PhysicalFormat' }
+        quantity: { type: integer, minimum: 1 }
+        unitPrice: { $ref: '#/components/schemas/Money' }
+        lineTotal: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+    Shipment:
+      type: object
+      required: [id, status, recipientName, addressLine1, city, stateRegion, postalCode, countryCode, phone]
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/ShipmentStatus' }
+        recipientName: { type: string, description: Snapshot of the registered customer's name at checkout; alternate recipients are not supported. }
+        company: { type: string, nullable: true }
+        addressLine1: { type: string }
+        addressLine2: { type: string, nullable: true }
+        city: { type: string }
+        stateRegion: { type: string }
+        postalCode: { type: string, pattern: '^[1-9][0-9]{5}$' }
+        countryCode: { type: string, enum: [IN] }
+        phone: { type: string }
+        shippedAt: { type: string, nullable: true, format: date-time }
+        deliveredAt: { type: string, nullable: true, format: date-time }
+        trackingReference: { type: string, nullable: true, maxLength: 200, description: Returned only to owner and authorized staff; availability is not guaranteed. }
+    OrderConfirmation:
+      type: object
+      required: [order, registeredEmail, confirmationMessage]
+      properties:
+        order: { $ref: '#/components/schemas/Order' }
+        registeredEmail: { type: string, format: email, description: Account email address; confirmation email is sent only here. }
+        confirmationMessage: { type: string, example: Order completed. A confirmation email will be sent to your registered email address. }
+    PaymentMethodType:
+      type: string
+      enum: [CARD, PAYPAL]
+    CardBrand:
+      type: string
+      enum: [AMEX, VISA, MASTERCARD]
+    PaymentAttemptRequest:
+      type: object
+      additionalProperties: false
+      required: [methodType]
+      properties:
+        methodType: { $ref: '#/components/schemas/PaymentMethodType' }
+        methodBrand:
+          allOf: [{ $ref: '#/components/schemas/CardBrand' }]
+          description: Required for CARD and must be omitted/null for PAYPAL.
+    PaymentAttemptSummary:
+      type: object
+      required: [id, status, amount, currency, methodType, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/PaymentStatus' }
+        amount: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        methodType: { $ref: '#/components/schemas/PaymentMethodType' }
+        methodBrand: { allOf: [{ $ref: '#/components/schemas/CardBrand' }] }
+        lastFour: { type: string, nullable: true, pattern: '^[0-9]{4}$', description: Only when returned by provider and approved; never PAN or CVV. }
+        createdAt: { type: string, format: date-time }
+    PaymentStatus:
+      type: string
+      enum: [INITIATED, REQUIRES_ACTION, AUTHORIZED, CAPTURED, FAILED, CANCELLED, PARTIALLY_REFUNDED, REFUNDED]
+    PaymentAttempt:
+      allOf:
+        - $ref: '#/components/schemas/PaymentAttemptSummary'
+        - type: object
+          properties:
+            providerActionUrl: { type: string, nullable: true, format: uri, description: Short-lived provider-hosted redirect/action URL; never a payment credential. }
+            clientAction: { type: object, nullable: true, additionalProperties: true, description: Provider adapter response with non-secret action data only. }
+    AdminBookCreate:
+      type: object
+      additionalProperties: false
+      required: [title, slug, authorName, variants]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 300 }
+        slug: { type: string, minLength: 1, maxLength: 320 }
+        description: { type: string, nullable: true }
+        authorName: { type: string, minLength: 1, maxLength: 200 }
+        categoryIds: { type: array, items: { type: string, format: uuid } }
+        isbn10: { type: string, nullable: true, pattern: '^[0-9Xx]{10}$' }
+        isbn13: { type: string, nullable: true, pattern: '^[0-9]{13}$' }
+        coverImageUrl: { type: string, nullable: true, format: uri }
+        status: { type: string, enum: [DRAFT, PUBLISHED], default: DRAFT }
+        variants:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/AdminVariantCreate' }
+    AdminVariantCreate:
+      type: object
+      additionalProperties: false
+      required: [format, price, stockQuantity]
+      properties:
+        format: { $ref: '#/components/schemas/PhysicalFormat' }
+        price: { $ref: '#/components/schemas/Money' }
+        stockQuantity: { type: integer, minimum: 0, description: Required for every enabled physical format. }
+        isAvailable: { type: boolean, default: true }
+    AdminBookUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title: { type: string, minLength: 1, maxLength: 300 }
+        slug: { type: string, minLength: 1, maxLength: 320 }
+        description: { type: string, nullable: true }
+        authorName: { type: string, minLength: 1, maxLength: 200 }
+        categoryIds: { type: array, items: { type: string, format: uuid } }
+        isbn10: { type: string, nullable: true, pattern: '^[0-9Xx]{10}$' }
+        isbn13: { type: string, nullable: true, pattern: '^[0-9]{13}$' }
+        coverImageUrl: { type: string, nullable: true, format: uri }
+        status: { type: string, enum: [DRAFT, PUBLISHED] }
+        variants:
+          type: array
+          description: Partial updates by variant ID; omitted existing variants remain unchanged. Stock is explicitly supplied when changing it; zero is valid.
+          items: { $ref: '#/components/schemas/AdminVariantUpdate' }
+    AdminVariantUpdate:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+        price: { $ref: '#/components/schemas/Money' }
+        stockQuantity: { type: integer, minimum: 0 }
+        isAvailable: { type: boolean }
+    AdminPhysicalVariant:
+      allOf:
+        - $ref: '#/components/schemas/PublicPhysicalVariant'
+        - type: object
+          required: [stockQuantity, isAvailable]
+          properties:
+            stockQuantity: { type: integer, minimum: 0 }
+            isAvailable: { type: boolean }
+    AdminBook:
+      allOf:
+        - $ref: '#/components/schemas/Book'
+        - type: object
+          required: [status, adminVariants]
+          properties:
+            status: { $ref: '#/components/schemas/BookStatus' }
+            adminVariants:
+              type: array
+              items: { $ref: '#/components/schemas/AdminPhysicalVariant' }
+    AdminOrder:
+      allOf:
+        - $ref: '#/components/schemas/Order'
+        - type: object
+          required: [customer]
+          properties:
+            customer:
+              type: object
+              required: [id, firstName, lastName, email]
+              properties:
+                id: { type: string, format: uuid }
+                firstName: { type: string }
+                lastName: { type: string }
+                email: { type: string, format: email }
+            paymentAttempts:
+              type: array
+              items:
+                allOf:
+                  - $ref: '#/components/schemas/PaymentAttemptSummary'
+                  - type: object
+                    properties:
+                      providerReference: { type: string, nullable: true, maxLength: 200, description: Safe provider reference; never credentials or raw event data. }
+    FulfillmentUpdate:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { $ref: '#/components/schemas/ShipmentStatus' }
+        carrier: { type: string, nullable: true, maxLength: 100 }
+        trackingReference: { type: string, nullable: true, maxLength: 200 }

@@ -74,7 +74,7 @@ A customer browses the catalog or searches for books by title, author, category,
 
 #### View Book Details
 
-A customer opens a book detail page to view information such as title, author, description, format, price, and availability.
+A customer opens a book detail page to view information such as title, author, description, format, price, and availability. For the current scope, each book has exactly one author.
 
 #### Purchase Physical Book
 
@@ -115,21 +115,23 @@ The next step is to define the highest-priority workflows in more detail: accoun
 
 ### 2.1 Major Application Modules
 
-1. Customer Account Module
-2. Book Catalog Module
-3. Search and Filtering Module
-4. Book Detail Module
-5. Shopping Cart Module
-6. Checkout and Payment Module
-7. Shipping Module
-8. Order Management Module
-9. Admin Management Module
+1. Authentication Module
+2. Account Module
+3. Book Catalog Module
+4. Search and Filtering Module
+5. Book Detail Module
+6. Shopping Cart Module
+7. Checkout and Payment Module
+8. Shipping Module
+9. Order Management Module
+10. Admin Management Module
 
 ### 2.2 Features By Module
 
 | Module | Features / Functions |
 | --- | --- |
-| Customer Account Module | Customer registration, login, logout, profile management, saved shipping addresses, order history |
+| Authentication Module | Customer registration, login, logout, password recovery, session management, access control for authenticated actions |
+| Account Module | Profile management, saved shipping addresses, account dashboard, order history, account preferences |
 | Book Catalog Module | Display physical books, organize books by category, show pricing and availability |
 | Search and Filtering Module | Search by title and author, filter by category, price, and format |
 | Book Detail Module | Show book title, author, description, format options, price, and availability |
@@ -143,12 +145,14 @@ The next step is to define the highest-priority workflows in more detail: accoun
 
 | Module | Depends On | Reason |
 | --- | --- | --- |
+| Authentication Module | N/A | Provides identity and access control for customer accounts |
+| Account Module | Authentication Module | Profile and shipping details are linked to an authenticated customer |
 | Book Detail Module | Book Catalog Module | Book details come from catalog data |
 | Search and Filtering Module | Book Catalog Module | Search and filters operate on catalog data |
-| Shopping Cart Module | Customer Account Module, Book Catalog Module | Customers add catalog items to their cart |
-| Checkout and Payment Module | Customer Account Module, Shopping Cart Module | Checkout requires a logged-in customer and cart items |
+| Shopping Cart Module | Authentication Module, Account Module, Book Catalog Module | Customers need an authenticated account and catalog items to create a cart |
+| Checkout and Payment Module | Authentication Module, Account Module, Shopping Cart Module | Checkout requires a logged-in customer, valid account details, and cart items |
 | Shipping Module | Checkout and Payment Module | Shipping details are collected during checkout for physical books |
-| Order Management Module | Customer Account Module, Checkout and Payment Module | Orders are created after checkout |
+| Order Management Module | Authentication Module, Account Module, Checkout and Payment Module | Orders are created after checkout and tied to the customer account |
 | Admin Management Module | Book Catalog Module, Order Management Module | Admins manage books and customer orders |
 
 ### 2.4 MVP Features To Complete First
@@ -330,9 +334,11 @@ Design a detailed book page with:
 
 On the individual book detail screen, show the available physical formats as borderless choices for Hardcover and Paperback. Display the price directly below each format option.
 
-### 3.4 Account Screens
+### 3.4 Authentication & Account Screens
 
-#### Registration Page
+#### Authentication Module Screens
+
+##### Registration Page
 
 Design one customer registration screen with these fields in this order:
 
@@ -347,7 +353,7 @@ Design one customer registration screen with these fields in this order:
 - Prompt: `Already have an account? Login.` with `Login` linking to the login page.
 - Basic validation and error states.
 
-#### Login Page
+##### Login Page
 
 Design a customer login form with:
 
@@ -358,7 +364,9 @@ Design a customer login form with:
 - Link to create account page.
 - Error state for invalid login.
 
-#### Customer Account Dashboard
+#### Account Module Screens
+
+##### Customer Account Dashboard
 
 Show `Welcome back! 👋` as the account dashboard heading. Remove the `Account dashboard` heading text.
 
