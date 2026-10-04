@@ -43,7 +43,7 @@ This is a design specification, not a migration or application implementation. T
 
 ## 3. Architecture Overview
 
-Use a relational database (PostgreSQL is recommended for production; the exact engine is not specified). Organize Django models by domain ownership, whether as Django apps or modules:
+Use SQLite as the database for the MVP and development, using Django's built-in SQLite backend (DRF itself does not bundle a database). SQLite is suitable for a modest, single-instance deployment with persistent storage and regular backups; it has limited write concurrency and does not support effective `select_for_update()` row locking. If expected production traffic, concurrent checkout volume, or hosting requirements exceed those limits, migrate to a server database such as PostgreSQL before launch. Keep the schema and migrations portable. Organize Django models by domain ownership, whether as Django apps or modules:
 
 - `authentication`: `User`, `Session`, `PasswordResetToken` (if implemented)
 - `accounts`: `CustomerProfile`, `Address`
@@ -515,10 +515,10 @@ Mermaid note: Cart and order items have required physical-variant links; `OrderI
 
 Perform checkout in one database transaction:
 
-1. Lock the user's cart and every requested `PhysicalVariant` row with `select_for_update`, in deterministic primary-key order to reduce deadlocks.
-2. Re-fetch authoritative availability and prices; reject stale/unavailable items or any quantity exceeding `stock_quantity` with item-specific errors. Verify `is_available=True` and sufficient stock.
+1. Read the authenticated user's cart and process requested variants in deterministic primary-key order.
+2. Re-fetch authoritative availability and prices; reject stale/unavailable items or any quantity exceeding `stock_quantity` with item-specific errors. Verify `is_available=True`.
 3. Validate the required selected shipping address has country code `IN` and a valid six-digit Indian PIN.
-4. Atomically decrement each variant's available `stock_quantity` by the ordered quantity as a reservation, and create the pending order, its required shipment/address snapshot, immutable item snapshots, and payment attempt in the same transaction. Any failure rolls back both order creation and stock decrements. Validate each order line's book against `physical_variant.book` and calculate totals with `Decimal` and a fixed INR 0.00 shipping amount; apply India tax or discounts only under an approved policy.
+4. In one `transaction.atomic()` block, reserve stock with conditional database updates (`UPDATE ... WHERE stock_quantity >= requested_quantity`) and verify that exactly one row was updated for every variant. Do not rely on `select_for_update()` for SQLite correctness: SQLite does not provide effective row-level `SELECT ... FOR UPDATE` locks. Its serialized writes can reduce concurrent write throughput or produce a transient database-locked error; handle bounded retries where appropriate and return a conflict if stock is no longer available. Create the pending order, required shipment/address snapshot, immutable item snapshots, and payment attempt in the same transaction. Any failure rolls back both order creation and stock decrements. Validate each order line's book against `physical_variant.book` and calculate totals with `Decimal` and a fixed INR 0.00 shipping amount; apply India tax or discounts only under an approved policy.
 5. Commit before contacting a payment provider where possible; do not hold database locks over external calls. Use a unique idempotency key per payment attempt and a persisted payment-intent workflow if provider calls require durable coordination.
 6. Clear or mark cart items according to payment initiation semantics. The exact reservation expiry/release behavior on payment failure or order cancellation is not defined; it must be decided before implementation. Preserve the pending order/payment attempt for retry as described above.
 
@@ -532,7 +532,7 @@ After the confirmation transaction commits, dispatch an order-confirmation email
 
 ### Inventory reservation
 
-Inventory is mandatory. `stock_quantity` is the number of units currently available to sell; checkout reserves by decrementing it under row locks in the same transaction that creates the pending order. Concurrent checkouts therefore serialize on each variant and cannot reserve more than its available quantity. A conditional update (`stock_quantity >= requested_quantity`) is an alternative, provided every affected row is checked and all order/stock writes remain atomic. The exact reservation expiry and release/restock behavior after payment failure or cancellation remains open; do not implement an assumed timeout or release transition. Backorders are not in scope unless separately approved.
+Inventory is mandatory. `stock_quantity` is the number of units currently available to sell; checkout reserves by conditionally decrementing stock (`stock_quantity >= requested_quantity`) in the same atomic transaction that creates the pending order. Check every affected row count and roll back all writes if any variant lacks sufficient stock. Do not rely on `select_for_update()` with SQLite. SQLite serializes writes, which limits checkout write concurrency; use bounded handling for transient database-lock errors, and load-test concurrent checkouts against the actual deployment. If the expected write concurrency is too high for SQLite, migrate to a server database and use its row-locking behavior. The exact reservation expiry and release/restock behavior after payment failure or cancellation remains open; do not implement an assumed timeout or release transition. Backorders are not in scope unless separately approved.
 
 ## 9. Privacy, Security, and Retention
 
@@ -559,7 +559,7 @@ Inventory is mandatory. `stock_quantity` is the number of units currently availa
 | Order confirmation email | Post-commit side effect addressed to the registered `User.email`, triggered only by authoritative transition to `Order.status=CONFIRMED`; retry transient failures and deduplicate per confirmation event. No notification persistence entity is required. Delivery provider and durable dispatch mechanism remain open. |
 | Physical address and saved addresses | `Address` for reusable data; `Shipment` for immutable delivery snapshot. |
 | Address & payment / checkout screens | `Address`, `Shipment`, `Payment`, `Order`; India-only country `IN`, six-digit PIN validation, accepted methods `CARD` (`AMEX`, `VISA`, `MASTERCARD`) and `PAYPAL`; never store PAN, CVV, or provider credentials. Provider choice and capture/refund behavior remain open. |
-| Cart and checkout availability | Required `PhysicalVariant.stock_quantity`; catalog shows purchasability only when enabled and stock is positive; checkout atomically reserves requested units under row locks and rejects insufficient stock. Reservation release/expiry after failure or cancellation remains open. |
+| Cart and checkout availability | Required `PhysicalVariant.stock_quantity`; catalog shows purchasability only when enabled and stock is positive; checkout atomically reserves requested units using conditional stock updates and rejects insufficient stock. SQLite write concurrency limits apply; reservation release/expiry after failure or cancellation remains open. |
 | Order summary and checkout totals | `Order.subtotal`, `shipping_amount`, `tax_amount`, `discount_amount`, `total`; shipping is persisted as INR 0.00 and shown on every order total. India tax treatment/rates/rounding remain open; discounts/coupons are outside MVP unless approved. |
 | Admin catalog/order management | Django staff/groups/permissions over catalog and order data; audit records recommended. |
 | Admin stock and shipment status UI | Required `PhysicalVariant.stock_quantity`, `Shipment.status`; fulfillment transitions and tracking policy remain open. |
