@@ -7,6 +7,7 @@ This is a simple REST contract for the three catalog screens in the [BookBloom F
 ### `GET /api/catalog/home`
 
 Provides the hero image and featured books shown on the Home screen. The hero image is not a carousel item.
+Return only books whose catalog `featured` field is `true` in `featuredBooks`. The flag defaults to `false`; how catalog staff maintain the flag is outside this customer-facing API.
 
 Response:
 
@@ -19,6 +20,7 @@ Response:
       "title": "Atomic Habits",
       "author": "James Clear",
       "coverUrl": "https://example.test/atomic-habits.jpg",
+      "featured": true,
       "physicalVariantId": "variant-id",
       "format": "HARDCOVER",
       "price": "1599.00",
@@ -42,6 +44,7 @@ Returns catalog results for search, filters, and sorting.
 | `minPrice`, `maxPrice` | Inclusive INR price bounds |
 | `format` | `hardcover` or `paperback`; repeatable |
 | `minRating` | Minimum rating, from 1 to 5 |
+| `featured` | Optional boolean filter; when supplied, match books with that `featured` value. Omit to include both featured and non-featured books. |
 | `sort` | `default`, `newest`, `title_asc`, `price_asc`, or `price_desc` |
 | `page` | 1-based page number; defaults to `1` |
 | `pageSize` | Number of results per page; defaults to `12` |
@@ -59,6 +62,7 @@ Response:
     "title": "Atomic Habits",
     "author": "James Clear",
     "coverUrl": "https://example.test/cover.jpg",
+    "featured": false,
     "physicalVariantId": "variant-id",
     "format": "HARDCOVER",
     "price": "2249.00",
@@ -86,6 +90,7 @@ Response:
   "author": "James Clear",
   "description": "A practical guide to building better habits.",
   "coverUrl": "https://example.test/cover.jpg",
+  "featured": true,
   "rating": 5,
   "variants": [
     { "id": "variant-id", "format": "HARDCOVER", "price": "2249.00", "currency": "INR", "inStock": true },

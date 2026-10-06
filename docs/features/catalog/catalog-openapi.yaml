@@ -85,6 +85,11 @@ paths:
             type: number
             minimum: 1
             maximum: 5
+        - name: featured
+          in: query
+          description: Match the book's featured flag when supplied; omit to include both featured and non-featured books.
+          schema:
+            type: boolean
         - name: sort
           in: query
           description: Result ordering. Omit to use the configured default order.
@@ -157,6 +162,7 @@ paths:
                 author: James Clear
                 description: A practical guide to building better habits.
                 coverUrl: https://example.test/cover.jpg
+                featured: true
                 rating: 5
                 variants:
                   - id: 00000000-0000-4000-8000-000000000001
@@ -182,7 +188,7 @@ components:
 
     CatalogBookCard:
       type: object
-      required: [id, title, author, physicalVariantId, format, price, currency]
+      required: [id, title, author, featured, physicalVariantId, format, price, currency]
       properties:
         id:
           type: string
@@ -195,6 +201,9 @@ components:
           type: string
           format: uri
           nullable: true
+        featured:
+          type: boolean
+          description: Whether the book is included in the Home Featured Books carousel.
         physicalVariantId:
           type: string
           format: uuid
@@ -216,7 +225,7 @@ components:
 
     CatalogBookTeaser:
       type: object
-      required: [id, title, author]
+      required: [id, title, author, featured]
       properties:
         id:
           type: string
@@ -228,6 +237,10 @@ components:
           type: string
           format: uri
           nullable: true
+        featured:
+          type: boolean
+          enum: [true]
+          description: Home Featured Books contains only books whose featured flag is true.
         physicalVariantId:
           type: string
           format: uuid
@@ -282,7 +295,7 @@ components:
 
     CatalogBookDetail:
       type: object
-      required: [id, title, author, variants]
+      required: [id, title, author, featured, variants]
       properties:
         id:
           type: string
@@ -297,6 +310,9 @@ components:
           type: string
           format: uri
           nullable: true
+        featured:
+          type: boolean
+          description: Whether the book is included in the Home Featured Books carousel.
         rating:
           type: number
           minimum: 1

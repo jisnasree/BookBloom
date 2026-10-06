@@ -16,6 +16,7 @@ One row per distinct title.
 | `description` | TEXT | Detail-screen description |
 | `cover_url` | TEXT | Cover image location |
 | `rating` | DECIMAL(2,1), nullable | Display rating from 1 to 5 |
+| `featured` | BOOLEAN, NOT NULL, default `FALSE` | Whether the book is included in the Home Featured Books carousel |
 | `created_at` | TIMESTAMP | Supports newest-first sorting |
 | `updated_at` | TIMESTAMP | Record update time |
 
@@ -73,6 +74,7 @@ erDiagram
         TEXT description
         TEXT cover_url
         DECIMAL rating
+        BOOLEAN featured
         TIMESTAMP created_at
         TIMESTAMP updated_at
     }
@@ -105,6 +107,7 @@ erDiagram
 - Filter through `book_categories` and `PhysicalVariant.format`.
 - Apply price bands to `PhysicalVariant.price` and the minimum-rating filter to `books.rating`.
 - Sort by `books.title`, `PhysicalVariant.price`, or `books.created_at` as requested.
+- Select Home carousel items where `books.featured = TRUE`; apply a featured filter to catalog results when requested.
 - Apply pagination after filtering and sorting, using a page size of 12 by default (`LIMIT 12 OFFSET (page - 1) * 12`). Compute the result total from the filtered set before applying the limit and offset.
 - Use a deterministic tie-breaker (such as `books.id`) with each sort order so moving between pages does not produce duplicate or skipped books when sort values match.
 - Add indexes for title, author, category joins, variant format, and variant price as needed for query performance.
@@ -114,4 +117,5 @@ erDiagram
 - The Figma screens show book ratings but no individual reviews, ISBN, or variant-specific cover. Stock is included to align with the existing `PhysicalVariant` catalog model.
 - “Newest” uses `created_at`; confirm whether the product should instead sort by a publication date.
 - The design does not define the business rule for the default/popularity ordering.
+- The boolean flag identifies Home-featured books; the mechanism and permissions for maintaining it are outside these screens.
 - The current page and page size are request/UI state and are not persisted in the catalog database.

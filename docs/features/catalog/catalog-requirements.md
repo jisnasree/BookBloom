@@ -15,6 +15,7 @@ The catalog experience covers three desktop screens in the [BookBloom Figma file
 - Show the shared navigation, including Home, Books, Categories, and Orders, and a search field.
 - Show the hero image above the featured-books section.
 - Present featured books in a carousel with cover, title, author, format, INR price, and rating.
+- Include only books whose catalog `featured` flag is `true`; books default to not featured.
 - Provide carousel navigation and a link to see all featured books.
 
 ### Catalog results
@@ -29,6 +30,7 @@ The catalog experience covers three desktop screens in the [BookBloom Figma file
 - Show the current result range and total, for example, “Showing 1–12 of 128 books”. Use 12 results per page; 128 results therefore span 11 pages, with 8 results on the last page.
 - Disable or omit Previous on the first page and Next on the last page. Keep the current search, filters, and sort when changing pages.
 - Return to page 1 when search, filters, or sort changes.
+- Allow the catalog results to be filtered to featured books for the Home screen's “see all featured books” link.
 - Show a clear empty state when a search or filter combination has no matches.
 
 ### Book detail
