@@ -19,8 +19,10 @@ Response:
       "title": "Atomic Habits",
       "author": "James Clear",
       "coverUrl": "https://example.test/atomic-habits.jpg",
-      "format": "hardcover",
-      "price": 1599,
+      "physicalVariantId": "variant-id",
+      "format": "HARDCOVER",
+      "price": "1599.00",
+      "currency": "INR",
       "rating": 5
     }
   ]
@@ -57,8 +59,10 @@ Response:
     "title": "Atomic Habits",
     "author": "James Clear",
     "coverUrl": "https://example.test/cover.jpg",
-    "format": "hardcover",
-    "price": 2249,
+    "physicalVariantId": "variant-id",
+    "format": "HARDCOVER",
+    "price": "2249.00",
+    "currency": "INR",
     "rating": 5
   }],
   "total": 128,
@@ -67,11 +71,11 @@ Response:
 }
 ```
 
-Prices are numeric INR amounts. The displayed rating is on a 1–5 scale. For this example, the UI displays “Showing 1–12 of 128 books” and 11 pages; the final page contains 8 books.
+Prices are decimal strings in INR. The displayed rating is on a 1–5 scale. For this example, the UI displays “Showing 1–12 of 128 books” and 11 pages; the final page contains 8 books.
 
 ### `GET /api/catalog/books/{bookId}`
 
-Returns details and available editions for the detail screen.
+Returns book details and available physical variants for the detail screen. The `variants` array uses the same `PhysicalVariant` concept as the catalog and cart models.
 
 Response:
 
@@ -83,9 +87,9 @@ Response:
   "description": "A practical guide to building better habits.",
   "coverUrl": "https://example.test/cover.jpg",
   "rating": 5,
-  "editions": [
-    { "id": "edition-id", "format": "hardcover", "price": 2249 },
-    { "id": "edition-id-2", "format": "paperback", "price": 1699 }
+  "variants": [
+    { "id": "variant-id", "format": "HARDCOVER", "price": "2249.00", "currency": "INR", "inStock": true },
+    { "id": "variant-id-2", "format": "PAPERBACK", "price": "1699.00", "currency": "INR", "inStock": true }
   ]
 }
 ```

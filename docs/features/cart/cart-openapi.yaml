@@ -1,0 +1,270 @@
+openapi: 3.0.3
+info:
+  title: BookBloom Cart API
+  version: 0.1.0-proposed
+  description: |
+    Authenticated cart operations for the desktop Shopping Cart screen.
+    JSON uses camelCase. The server owns prices and totals; all money is
+    represented as decimal strings in INR. Cart prices are not locked until checkout.
+servers:
+  - url: /api/v1
+    description: API base path; configure the host per environment.
+tags:
+  - name: Cart
+    description: The authenticated customer's physical-book cart.
+security:
+  - BearerAuth: []
+paths:
+  /cart:
+    get:
+      tags: [Cart]
+      operationId: getCart
+      summary: Get the current customer's cart
+      description: Returns the caller's cart, including an empty cart when it has no items.
+      responses:
+        '200':
+          description: Current cart and calculated summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /cart/items:
+    post:
+      tags: [Cart]
+      operationId: addCartItem
+      summary: Add a physical variant to the cart
+      description: |
+        Adds the requested physical variant or increments the quantity of the existing line for that variant.
+        The server reads the current price and stock; clients must not submit a price.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddCartItemRequest'
+      responses:
+        '201':
+          description: Cart line added or consolidated; updated cart returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Physical variant is not available for purchase.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Requested quantity exceeds available stock.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    delete:
+      tags: [Cart]
+      operationId: emptyCart
+      summary: Remove all items from the current cart
+      responses:
+        '200':
+          description: Cart is empty; updated cart returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /cart/items/{itemId}:
+    parameters:
+      - name: itemId
+        in: path
+        required: true
+        description: Cart-line identifier belonging to the current customer's cart.
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: [Cart]
+      operationId: updateCartItem
+      summary: Change a cart-line quantity
+      description: Quantity must be at least 1; price and stock are server-controlled.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCartItemRequest'
+      responses:
+        '200':
+          description: Quantity updated; updated cart returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Requested quantity exceeds available stock.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    delete:
+      tags: [Cart]
+      operationId: removeCartItem
+      summary: Remove an item from the current cart
+      responses:
+        '200':
+          description: Item removed; updated cart returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Client-generated key to safely retry an add request.
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    Money:
+      type: string
+      pattern: '^[0-9]+\.[0-9]{2}$'
+      example: '2249.00'
+      description: Non-negative monetary amount in INR.
+    Currency:
+      type: string
+      enum: [INR]
+    PhysicalFormat:
+      type: string
+      enum: [PAPERBACK, HARDCOVER]
+    AddCartItemRequest:
+      type: object
+      additionalProperties: false
+      required: [physicalVariantId, quantity]
+      properties:
+        physicalVariantId:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+    UpdateCartItemRequest:
+      type: object
+      additionalProperties: false
+      required: [quantity]
+      properties:
+        quantity:
+          type: integer
+          minimum: 1
+    Cart:
+      type: object
+      required: [id, items, subtotal, estimatedShipping, total, currency, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CartItem'
+        subtotal:
+          $ref: '#/components/schemas/Money'
+        estimatedShipping:
+          $ref: '#/components/schemas/Money'
+        total:
+          $ref: '#/components/schemas/Money'
+        currency:
+          $ref: '#/components/schemas/Currency'
+        updatedAt:
+          type: string
+          format: date-time
+    CartItem:
+      type: object
+      required:
+        [id, physicalVariantId, title, author, format, quantity, unitPrice, lineTotal, currency, inStock]
+      properties:
+        id:
+          type: string
+          format: uuid
+        physicalVariantId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        author:
+          type: string
+        coverUrl:
+          type: string
+          format: uri
+          nullable: true
+        format:
+          $ref: '#/components/schemas/PhysicalFormat'
+        quantity:
+          type: integer
+          minimum: 1
+        unitPrice:
+          $ref: '#/components/schemas/Money'
+        originalPrice:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+          description: Optional catalog list price shown crossed out when greater than unitPrice.
+        lineTotal:
+          $ref: '#/components/schemas/Money'
+        currency:
+          $ref: '#/components/schemas/Currency'
+        inStock:
+          type: boolean
+    ApiError:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+  responses:
+    BadRequest:
+      description: Invalid request fields.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unauthorized:
+      description: Missing or invalid authentication.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: Cart item does not exist or is not visible to the caller.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'

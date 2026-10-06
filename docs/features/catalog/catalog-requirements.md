@@ -42,5 +42,4 @@ The catalog experience covers three desktop screens in the [BookBloom Figma file
 - Prices use Indian rupees (₹).
 - Search, filters, and sorting should work together and update the result count and displayed books.
 - Selecting a book from Home or the catalog opens that book’s detail screen.
-- The catalog cards and detail screen should use consistent book and edition data.
-
+- The catalog cards and detail screen should use consistent book and `PhysicalVariant` data.

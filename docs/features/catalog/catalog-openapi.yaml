@@ -120,8 +120,10 @@ paths:
                     title: Atomic Habits
                     author: James Clear
                     coverUrl: https://example.test/cover.jpg
-                    format: hardcover
-                    price: 2249
+                    physicalVariantId: 00000000-0000-4000-8000-000000000001
+                    format: HARDCOVER
+                    price: '2249.00'
+                    currency: INR
                     rating: 5
                 total: 128
                 page: 1
@@ -133,7 +135,7 @@ paths:
     get:
       tags: [Catalog]
       operationId: getCatalogBook
-      summary: Get book details and available editions
+      summary: Get book details and available physical variants
       security: []
       parameters:
         - name: bookId
@@ -156,13 +158,19 @@ paths:
                 description: A practical guide to building better habits.
                 coverUrl: https://example.test/cover.jpg
                 rating: 5
-                editions:
-                  - id: edition-id
-                    format: hardcover
-                    price: 2249
-                  - id: edition-id-2
-                    format: paperback
-                    price: 1699
+                variants:
+                  - id: 00000000-0000-4000-8000-000000000001
+                    format: HARDCOVER
+                    price: '2249.00'
+                    currency: INR
+                    inStock: true
+                    availableQuantity: 4
+                  - id: 00000000-0000-4000-8000-000000000002
+                    format: PAPERBACK
+                    price: '1699.00'
+                    currency: INR
+                    inStock: true
+                    availableQuantity: 8
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -170,11 +178,11 @@ components:
   schemas:
     BookFormat:
       type: string
-      enum: [hardcover, paperback]
+      enum: [PAPERBACK, HARDCOVER]
 
     CatalogBookCard:
       type: object
-      required: [id, title, author, format, price]
+      required: [id, title, author, physicalVariantId, format, price, currency]
       properties:
         id:
           type: string
@@ -187,12 +195,19 @@ components:
           type: string
           format: uri
           nullable: true
+        physicalVariantId:
+          type: string
+          format: uuid
+          description: Physical variant ID used to add the selected format to the cart.
         format:
           $ref: '#/components/schemas/BookFormat'
         price:
-          type: number
-          minimum: 0
-          description: Price in INR.
+          type: string
+          pattern: '^[0-9]+\.[0-9]{2}$'
+          description: Current price in INR.
+        currency:
+          type: string
+          enum: [INR]
         rating:
           type: number
           minimum: 1
@@ -213,12 +228,19 @@ components:
           type: string
           format: uri
           nullable: true
+        physicalVariantId:
+          type: string
+          format: uuid
+          description: Selected featured format's physical variant ID.
         format:
           $ref: '#/components/schemas/BookFormat'
         price:
-          type: number
-          minimum: 0
-          description: Price in INR.
+          type: string
+          pattern: '^[0-9]+\.[0-9]{2}$'
+          description: Current price in INR.
+        currency:
+          type: string
+          enum: [INR]
         rating:
           type: number
           minimum: 1
@@ -260,7 +282,7 @@ components:
 
     CatalogBookDetail:
       type: object
-      required: [id, title, author, editions]
+      required: [id, title, author, variants]
       properties:
         id:
           type: string
@@ -280,23 +302,32 @@ components:
           minimum: 1
           maximum: 5
           nullable: true
-        editions:
+        variants:
           type: array
           items:
-            $ref: '#/components/schemas/BookEdition'
+            $ref: '#/components/schemas/PhysicalVariant'
 
-    BookEdition:
+    PhysicalVariant:
       type: object
-      required: [id, format, price]
+      required: [id, format, price, currency, inStock, availableQuantity]
       properties:
         id:
           type: string
+          format: uuid
         format:
           $ref: '#/components/schemas/BookFormat'
         price:
-          type: number
+          type: string
+          pattern: '^[0-9]+\.[0-9]{2}$'
+          description: Current price in INR.
+        currency:
+          type: string
+          enum: [INR]
+        inStock:
+          type: boolean
+        availableQuantity:
+          type: integer
           minimum: 0
-          description: Price in INR.
 
     ApiError:
       type: object

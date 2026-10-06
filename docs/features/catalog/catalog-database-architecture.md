@@ -35,38 +35,83 @@ Join table for the many-to-many relationship between books and categories.
 | `book_id` | UUID / foreign key → `books.id` | Part of composite primary key |
 | `category_id` | UUID / foreign key → `categories.id` | Part of composite primary key |
 
-### `book_editions`
+### `PhysicalVariant`
 
-One row per purchasable format of a book. Keeping prices here supports the different Hardcover and Paperback prices shown on the detail screen.
+One row per purchasable physical format of a book, matching the existing catalog model. Keeping prices on the variant supports the different Hardcover and Paperback prices shown on the detail screen.
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | UUID / primary key | Edition identifier |
+| `id` | UUID / primary key | Physical variant identifier; used by cart requests as `physicalVariantId` |
 | `book_id` | UUID / foreign key → `books.id` | Parent book |
-| `format` | VARCHAR | `hardcover` or `paperback` |
-| `price_inr` | DECIMAL(10,2) | Price in INR |
+| `format` | VARCHAR | `HARDCOVER` or `PAPERBACK` |
+| `price` | DECIMAL(12,2) | Current price |
+| `currency` | CHAR(3) | `INR` |
+| `stock_quantity` | Positive integer | Available physical stock |
+| `is_available` | BOOLEAN | Whether the variant is enabled for sale |
+| `updated_at` | TIMESTAMP | Last catalog update |
 
-Add a unique constraint on (`book_id`, `format`) if each book can have at most one edition per format.
+Enforce a unique constraint on (`book_id`, `format`) so a book has at most one variant per format.
 
 ## Relationships
 
-- A book can have multiple categories and editions.
+- A book can have multiple categories and physical variants.
 - A category can be assigned to multiple books.
 - Ratings belong to the book in this minimal model; the design does not show individual reviews.
+
+## ER Diagram
+
+```mermaid
+erDiagram
+    BOOK ||--o{ PHYSICAL_VARIANT : has
+    BOOK ||--o{ BOOK_CATEGORY : classified_as
+    CATEGORY ||--o{ BOOK_CATEGORY : includes
+
+    BOOK {
+        UUID id PK
+        VARCHAR title
+        VARCHAR author
+        TEXT description
+        TEXT cover_url
+        DECIMAL rating
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
+    }
+
+    CATEGORY {
+        UUID id PK
+        VARCHAR name UK
+    }
+
+    BOOK_CATEGORY {
+        UUID book_id PK, FK
+        UUID category_id PK, FK
+    }
+
+    PHYSICAL_VARIANT {
+        UUID id PK
+        UUID book_id FK
+        VARCHAR format
+        DECIMAL price
+        CHAR currency
+        INTEGER stock_quantity
+        BOOLEAN is_available
+        TIMESTAMP updated_at
+    }
+```
 
 ## Query support
 
 - Search `books.title` and `books.author`; include other searchable metadata only when defined by the application.
-- Filter through `book_categories` and `book_editions.format`.
-- Apply price bands to `book_editions.price_inr` and the minimum-rating filter to `books.rating`.
-- Sort by `books.title`, `book_editions.price_inr`, or `books.created_at` as requested.
+- Filter through `book_categories` and `PhysicalVariant.format`.
+- Apply price bands to `PhysicalVariant.price` and the minimum-rating filter to `books.rating`.
+- Sort by `books.title`, `PhysicalVariant.price`, or `books.created_at` as requested.
 - Apply pagination after filtering and sorting, using a page size of 12 by default (`LIMIT 12 OFFSET (page - 1) * 12`). Compute the result total from the filtered set before applying the limit and offset.
 - Use a deterministic tie-breaker (such as `books.id`) with each sort order so moving between pages does not produce duplicate or skipped books when sort values match.
-- Add indexes for title, author, category joins, edition format, and edition price as needed for query performance.
+- Add indexes for title, author, category joins, variant format, and variant price as needed for query performance.
 
 ## Assumptions and exclusions
 
-- The Figma screens show book ratings but no individual reviews, stock count, ISBN, or edition-specific cover, so those are not included in this minimal schema.
+- The Figma screens show book ratings but no individual reviews, ISBN, or variant-specific cover. Stock is included to align with the existing `PhysicalVariant` catalog model.
 - “Newest” uses `created_at`; confirm whether the product should instead sort by a publication date.
 - The design does not define the business rule for the default/popularity ordering.
 - The current page and page size are request/UI state and are not persisted in the catalog database.
