@@ -1,0 +1,320 @@
+openapi: 3.0.3
+info:
+  title: BookBloom Catalog API
+  version: 0.1.0-proposed
+  description: |
+    OpenAPI contract for the Home, Catalog Search + Filters, and Book Detail screens.
+    The Home screen has a hero image above a featured-books carousel; it has no
+    New Releases section. JSON fields use camelCase. Prices are numeric INR amounts. The default catalog
+    ordering is shown as "Default order" in the design and is described as popularity
+    in the result count; its exact ranking rule remains to be decided.
+servers:
+  - url: /api
+    description: API base path; set the deployed host in the client environment.
+tags:
+  - name: Catalog
+    description: Public book discovery and detail.
+paths:
+  /catalog/home:
+    get:
+      tags: [Catalog]
+      operationId: getCatalogHome
+      summary: Get the Home hero image and featured books
+      security: []
+      responses:
+        '200':
+          description: Home screen catalog sections.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogHome'
+
+  /catalog/books:
+    get:
+      tags: [Catalog]
+      operationId: listCatalogBooks
+      summary: Search, filter, sort, and paginate catalog books
+      description: |
+        Search applies to book title, author, and keyword. Search, filters, and sorting
+        are applied before pagination. `total` is the number of matching books before
+        pagination. When search, filters, or sort changes, clients should reset `page`
+        to 1. The default ordering follows the configured catalog default.
+      security: []
+      parameters:
+        - name: q
+          in: query
+          description: Search title, author, or keyword.
+          schema:
+            type: string
+            maxLength: 200
+        - name: category
+          in: query
+          description: Category name or identifier. Repeat to select multiple categories.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              maxLength: 120
+        - name: minPrice
+          in: query
+          description: Inclusive minimum price in INR.
+          schema:
+            type: number
+            minimum: 0
+        - name: maxPrice
+          in: query
+          description: Inclusive maximum price in INR.
+          schema:
+            type: number
+            minimum: 0
+        - name: format
+          in: query
+          description: Edition format. Repeat to select multiple formats.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/BookFormat'
+        - name: minRating
+          in: query
+          description: Minimum catalog rating, from 1 to 5 stars.
+          schema:
+            type: number
+            minimum: 1
+            maximum: 5
+        - name: sort
+          in: query
+          description: Result ordering. Omit to use the configured default order.
+          schema:
+            type: string
+            enum: [default, newest, title_asc, price_asc, price_desc]
+            default: default
+        - name: page
+          in: query
+          description: 1-based page number.
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          description: Number of results per page.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 12
+      responses:
+        '200':
+          description: Matching books and pagination metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCatalogBooks'
+              example:
+                items:
+                  - id: book-id
+                    title: Atomic Habits
+                    author: James Clear
+                    coverUrl: https://example.test/cover.jpg
+                    format: hardcover
+                    price: 2249
+                    rating: 5
+                total: 128
+                page: 1
+                pageSize: 12
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /catalog/books/{bookId}:
+    get:
+      tags: [Catalog]
+      operationId: getCatalogBook
+      summary: Get book details and available editions
+      security: []
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          description: Catalog book identifier.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Book details, rating, and purchasable formats.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogBookDetail'
+              example:
+                id: book-id
+                title: Atomic Habits
+                author: James Clear
+                description: A practical guide to building better habits.
+                coverUrl: https://example.test/cover.jpg
+                rating: 5
+                editions:
+                  - id: edition-id
+                    format: hardcover
+                    price: 2249
+                  - id: edition-id-2
+                    format: paperback
+                    price: 1699
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  schemas:
+    BookFormat:
+      type: string
+      enum: [hardcover, paperback]
+
+    CatalogBookCard:
+      type: object
+      required: [id, title, author, format, price]
+      properties:
+        id:
+          type: string
+          description: Stable catalog book identifier.
+        title:
+          type: string
+        author:
+          type: string
+        coverUrl:
+          type: string
+          format: uri
+          nullable: true
+        format:
+          $ref: '#/components/schemas/BookFormat'
+        price:
+          type: number
+          minimum: 0
+          description: Price in INR.
+        rating:
+          type: number
+          minimum: 1
+          maximum: 5
+          nullable: true
+
+    CatalogBookTeaser:
+      type: object
+      required: [id, title, author]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        author:
+          type: string
+        coverUrl:
+          type: string
+          format: uri
+          nullable: true
+        format:
+          $ref: '#/components/schemas/BookFormat'
+        price:
+          type: number
+          minimum: 0
+          description: Price in INR.
+        rating:
+          type: number
+          minimum: 1
+          maximum: 5
+          nullable: true
+
+    CatalogHome:
+      type: object
+      required: [heroImageUrl, featuredBooks]
+      properties:
+        heroImageUrl:
+          type: string
+          format: uri
+          description: Hero image displayed above the featured-books carousel.
+        featuredBooks:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogBookTeaser'
+
+    PaginatedCatalogBooks:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogBookCard'
+        total:
+          type: integer
+          minimum: 0
+          description: Total matching books before pagination.
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+
+    CatalogBookDetail:
+      type: object
+      required: [id, title, author, editions]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        author:
+          type: string
+        description:
+          type: string
+          nullable: true
+        coverUrl:
+          type: string
+          format: uri
+          nullable: true
+        rating:
+          type: number
+          minimum: 1
+          maximum: 5
+          nullable: true
+        editions:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookEdition'
+
+    BookEdition:
+      type: object
+      required: [id, format, price]
+      properties:
+        id:
+          type: string
+        format:
+          $ref: '#/components/schemas/BookFormat'
+        price:
+          type: number
+          minimum: 0
+          description: Price in INR.
+
+    ApiError:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Invalid query or path parameter.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: Book does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
