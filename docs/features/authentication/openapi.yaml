@@ -1,0 +1,325 @@
+openapi: 3.0.3
+info:
+  title: BookBloom Authentication API
+  version: 0.1.0-proposed
+  description: >
+    Authentication-only API proposal derived from api-design.md.
+    JSON uses camelCase. Public error responses must not reveal whether an
+    email address has an account. OTP policy, token/session policy and final
+    status codes require approval.
+servers:
+  - url: /api/v1
+tags:
+  - name: Signup
+  - name: Login
+  - name: Email verification
+  - name: Password reset
+  - name: Logout
+paths:
+  /auth/register:
+    post:
+      tags: [Signup]
+      summary: Create a new user account and send an email OTP
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '202':
+          description: Verification required (generic response regardless of existing account)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationRequiredResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /auth/login:
+    post:
+      tags: [Login]
+      summary: Log in with email and password
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /auth/register/verify-email:
+    post:
+      tags: [Email verification]
+      summary: Verify the signup email address with an OTP
+      description: Whether verification also creates a login session is undecided.
+      operationId: verifySignupEmail
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailCodeRequest'
+      responses:
+        '200':
+          description: Email verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifiedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /auth/register/resend-code:
+    post:
+      tags: [Email verification]
+      summary: Resend the signup verification code
+      operationId: resendSignupCode
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/GenericAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /auth/password/forgot:
+    post:
+      tags: [Password reset]
+      summary: Start the password-reset process
+      operationId: forgotPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/GenericAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /auth/password/verify-reset-code:
+    post:
+      tags: [Password reset]
+      summary: Verify the reset OTP and receive a short-lived reset token
+      operationId: verifyResetCode
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailCodeRequest'
+      responses:
+        '200':
+          description: Code valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResetTokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /auth/password/reset:
+    post:
+      tags: [Password reset]
+      summary: Set a new password using the reset token
+      description: Public, but requires the reset token returned by verify-reset-code.
+      operationId: resetPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '204':
+          description: Password changed
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /auth/password/resend-code:
+    post:
+      tags: [Password reset]
+      summary: Resend the password-reset code
+      operationId: resendResetCode
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/GenericAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /auth/logout:
+    post:
+      tags: [Logout]
+      summary: Log out and revoke the current token/session
+      operationId: logout
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Logged out
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [firstName, lastName, email, phoneNumber, password, passwordConfirmation, termsAccepted]
+      properties:
+        firstName: { type: string, example: Asha }
+        lastName: { type: string, example: Menon }
+        email: { type: string, format: email, example: asha@example.in }
+        phoneNumber: { type: string, example: '+919876543210' }
+        password: { type: string, format: password }
+        passwordConfirmation: { type: string, format: password }
+        termsAccepted: { type: boolean }
+    VerificationRequiredResponse:
+      type: object
+      properties:
+        status: { type: string, example: verification_required }
+        message: { type: string, example: If registration can proceed, a verification code has been sent. }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password }
+    LoginResponse:
+      type: object
+      properties:
+        accessToken: { type: string, description: Opaque token }
+        tokenType: { type: string, example: Bearer }
+        expiresAt: { type: string, format: date-time }
+        
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        firstName: { type: string }
+        lastName: { type: string }
+        email: { type: string, format: email }
+        phoneNumber: { type: string }
+        emailVerifiedAt: { type: string, format: date-time, nullable: true }
+        isStaff: { type: boolean }
+    EmailRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+    EmailCodeRequest:
+      type: object
+      required: [email, code]
+      properties:
+        email: { type: string, format: email }
+        code: { type: string, example: '123456' }
+    VerifiedResponse:
+      type: object
+      properties:
+        status: { type: string, example: verified }
+        message: { type: string, example: Email address verified. }
+    ResetTokenResponse:
+      type: object
+      properties:
+        resetToken:
+          type: string
+          description: Short-lived, one-time, password-reset-scoped token; not usable as an access token.
+    ResetPasswordRequest:
+      type: object
+      required: [resetToken, newPassword, passwordConfirmation]
+      properties:
+        resetToken: { type: string }
+        newPassword: { type: string, format: password }
+        passwordConfirmation: { type: string, format: password }
+    GenericAcknowledgement:
+      type: object
+      properties:
+        message: { type: string }
+    Error:
+      type: object
+      required: [code, message, requestId]
+      properties:
+        code: { type: string, example: validation_error }
+        message: { type: string, example: The request could not be completed. }
+  responses:
+    GenericAccepted:
+      description: Generic acknowledgement (does not reveal whether the account exists)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericAcknowledgement'
+    BadRequest:
+      description: Malformed or invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Invalid credentials, invalid/expired/used code or token, or missing/revoked bearer token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Generic invalid challenge response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    TooManyRequests:
+      description: Rate limit, attempt limit or resend cooldown
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
