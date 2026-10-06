@@ -1,0 +1,357 @@
+openapi: 3.0.3
+info:
+  title: BookBloom Account API
+  version: 0.1.0-proposed
+  description: |
+    Authenticated customer profile and saved-address read/write operations
+    for the Account screens. Order history and order details are defined
+    separately by the Order API. JSON uses camelCase.
+servers:
+  - url: /api/v1
+    description: Configure the API host per environment.
+tags:
+  - name: Account
+    description: Current customer's account profile.
+  - name: Addresses
+    description: Current customer's saved addresses.
+security:
+  - BearerAuth: []
+paths:
+  /me:
+    get:
+      tags: [Account]
+      operationId: getCurrentProfile
+      summary: Get the current customer's profile
+      responses:
+        '200':
+          description: Safe profile for the authenticated user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /addresses:
+    get:
+      tags: [Addresses]
+      operationId: listAddresses
+      summary: List the current customer's saved addresses
+      responses:
+        '200':
+          description: Addresses owned by the authenticated customer; empty when none exist.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Address'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Addresses]
+      operationId: createAddress
+      summary: Save an address for the current customer
+      description: If isDefault is true, make it the customer's sole default atomically.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddressWrite'
+      responses:
+        '201':
+          description: Address created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Address'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /addresses/{addressId}:
+    parameters:
+      - name: addressId
+        in: path
+        required: true
+        description: Address UUID; must belong to the authenticated customer.
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Addresses]
+      operationId: getAddress
+      summary: Get one saved address
+      responses:
+        '200':
+          description: Address owned by the authenticated customer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Address'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Addresses]
+      operationId: updateAddress
+      summary: Update a saved address
+      description: Only mutable address fields may be changed. Ownership is mandatory.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddressPatch'
+      responses:
+        '200':
+          description: Address updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Address'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Addresses]
+      operationId: deleteAddress
+      summary: Delete a saved address
+      description: Deleting an address does not modify an existing order's shipment snapshot.
+      responses:
+        '204':
+          description: Address deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Profile:
+      type: object
+      additionalProperties: false
+      required: [id, firstName, lastName, email, phoneNumber, isStaff]
+      properties:
+        id:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+          maxLength: 150
+        lastName:
+          type: string
+          maxLength: 150
+        email:
+          type: string
+          format: email
+        phoneNumber:
+          type: string
+          maxLength: 32
+        termsAcceptedAt:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+        isStaff:
+          type: boolean
+          readOnly: true
+          description: Server-managed authorization marker; not editable by customers.
+    Address:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - addressLine1
+        - city
+        - stateRegion
+        - postalCode
+        - countryCode
+        - phone
+        - isDefault
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        label:
+          type: string
+          maxLength: 40
+          nullable: true
+        company:
+          type: string
+          maxLength: 200
+          nullable: true
+        addressLine1:
+          type: string
+          maxLength: 255
+        addressLine2:
+          type: string
+          maxLength: 255
+          nullable: true
+        city:
+          type: string
+          maxLength: 120
+        stateRegion:
+          type: string
+          maxLength: 120
+        postalCode:
+          type: string
+          pattern: '^[1-9][0-9]{5}$'
+          example: '560038'
+        countryCode:
+          type: string
+          enum: [IN]
+        phone:
+          type: string
+          maxLength: 32
+        isDefault:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+    AddressWrite:
+      type: object
+      additionalProperties: false
+      required: [addressLine1, city, stateRegion, postalCode, countryCode, phone]
+      properties:
+        label:
+          type: string
+          maxLength: 40
+        company:
+          type: string
+          maxLength: 200
+        addressLine1:
+          type: string
+          maxLength: 255
+        addressLine2:
+          type: string
+          maxLength: 255
+        city:
+          type: string
+          maxLength: 120
+        stateRegion:
+          type: string
+          maxLength: 120
+        postalCode:
+          type: string
+          pattern: '^[1-9][0-9]{5}$'
+          example: '560038'
+        countryCode:
+          type: string
+          enum: [IN]
+        phone:
+          type: string
+          maxLength: 32
+        isDefault:
+          type: boolean
+          default: false
+    AddressPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        label:
+          type: string
+          maxLength: 40
+          nullable: true
+        company:
+          type: string
+          maxLength: 200
+          nullable: true
+        addressLine1:
+          type: string
+          maxLength: 255
+        addressLine2:
+          type: string
+          maxLength: 255
+          nullable: true
+        city:
+          type: string
+          maxLength: 120
+        stateRegion:
+          type: string
+          maxLength: 120
+        postalCode:
+          type: string
+          pattern: '^[1-9][0-9]{5}$'
+        countryCode:
+          type: string
+          enum: [IN]
+        phone:
+          type: string
+          maxLength: 32
+        isDefault:
+          type: boolean
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+    BadRequest:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+    Unauthorized:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    NotFound:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+  responses:
+    BadRequest:
+      description: Invalid request fields.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BadRequest'
+    Unauthorized:
+      description: Missing or invalid authentication.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Unauthorized'
+    NotFound:
+      description: Resource does not exist or is not owned by the caller.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NotFound'
