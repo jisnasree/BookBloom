@@ -12,7 +12,7 @@ One row per distinct title.
 |---|---|---|
 | `id` | UUID / primary key | Stable catalog identifier |
 | `title` | VARCHAR | Display title; searchable |
-| `author` | VARCHAR | Display author; searchable |
+| `author_id` | UUID / foreign key → `authors.id` | Required author relationship; searchable through `Author.name` |
 | `description` | TEXT | Detail-screen description |
 | `cover_url` | TEXT | Cover image location |
 | `rating` | DECIMAL(2,1), nullable | Display rating from 1 to 5 |
@@ -27,14 +27,24 @@ One row per distinct title.
 | `id` | UUID / primary key | Category identifier |
 | `name` | VARCHAR / unique | Examples in Figma: Kids, Fiction, Romance, Literature, Mystery & Thrillers |
 
+### `authors`
+
+One row per author.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID / primary key | Author identifier |
+| `name` | VARCHAR(200) | Display author name |
+
 ### `book_categories`
 
 Join table for the many-to-many relationship between books and categories.
 
 | Column | Type | Notes |
 |---|---|---|
-| `book_id` | UUID / foreign key → `books.id` | Part of composite primary key |
-| `category_id` | UUID / foreign key → `categories.id` | Part of composite primary key |
+| `id` | UUID / primary key | Join-row identifier |
+| `book_id` | UUID / foreign key → `books.id` | Book in the assignment |
+| `category_id` | UUID / foreign key → `categories.id` | Category in the assignment; unique with `book_id` |
 
 ### `PhysicalVariant`
 
@@ -56,6 +66,7 @@ Enforce a unique constraint on (`book_id`, `format`) so a book has at most one v
 ## Relationships
 
 - A book can have multiple categories and physical variants.
+- Each book has exactly one required author; an author can be associated with multiple books.
 - A category can be assigned to multiple books.
 - Ratings belong to the book in this minimal model; the design does not show individual reviews.
 
@@ -69,8 +80,8 @@ erDiagram
 
     BOOK {
         UUID id PK
+        UUID author_id FK
         VARCHAR title
-        VARCHAR author
         TEXT description
         TEXT cover_url
         DECIMAL rating
@@ -84,9 +95,15 @@ erDiagram
         VARCHAR name UK
     }
 
+    AUTHOR {
+        UUID id PK
+        VARCHAR name
+    }
+
     BOOK_CATEGORY {
-        UUID book_id PK, FK
-        UUID category_id PK, FK
+        UUID id PK
+        UUID book_id FK
+        UUID category_id FK
     }
 
     PHYSICAL_VARIANT {
@@ -103,7 +120,8 @@ erDiagram
 
 ## Query support
 
-- Search `books.title` and `books.author`; include other searchable metadata only when defined by the application.
+- Search `books.title` and the related `authors.name`; include other searchable metadata only when defined by the application.
+- Resolve the displayed/searchable author name through `books.author_id` → `authors.id`; Book Management selects one Author.
 - Filter through `book_categories` and `PhysicalVariant.format`.
 - Apply price bands to `PhysicalVariant.price` and the minimum-rating filter to `books.rating`.
 - Sort by `books.title`, `PhysicalVariant.price`, or `books.created_at` as requested.

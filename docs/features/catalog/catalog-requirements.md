@@ -13,9 +13,9 @@ The catalog experience covers three desktop screens in the [BookBloom Figma file
 ### Home
 
 - Show the shared navigation, including Home, Books, Categories, and Orders, and a search field.
-- Show the hero image above the featured-books section.
+- Show the hero image above the featured-books section. The image comes from the React template, not an API.
 - Present featured books in a carousel with cover, title, author, format, INR price, and rating.
-- Include only books whose catalog `featured` flag is `true`; books default to not featured.
+- Load featured books via the catalog books endpoint with `featured=true`; include only books whose catalog `featured` flag is `true`; books default to not featured.
 - Provide carousel navigation and a link to see all featured books.
 
 ### Catalog results

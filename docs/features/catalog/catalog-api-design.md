@@ -4,35 +4,6 @@ This is a simple REST contract for the three catalog screens in the [BookBloom F
 
 ## Endpoints
 
-### `GET /api/catalog/home`
-
-Provides the hero image and featured books shown on the Home screen. The hero image is not a carousel item.
-Return only books whose catalog `featured` field is `true` in `featuredBooks`. The flag defaults to `false`; how catalog staff maintain the flag is outside this customer-facing API.
-
-Response:
-
-```json
-{
-  "heroImageUrl": "https://example.test/catalog-hero.jpg",
-  "featuredBooks": [
-    {
-      "id": "book-id",
-      "title": "Atomic Habits",
-      "author": "James Clear",
-      "coverUrl": "https://example.test/atomic-habits.jpg",
-      "featured": true,
-      "physicalVariantId": "variant-id",
-      "format": "HARDCOVER",
-      "price": "1599.00",
-      "currency": "INR",
-      "rating": 5
-    }
-  ]
-}
-```
-
-Each featured book includes its card details. The Home screen does not have a New Releases section.
-
 ### `GET /api/catalog/books`
 
 Returns catalog results for search, filters, and sorting.

@@ -4,8 +4,8 @@ info:
   version: 0.1.0-proposed
   description: |
     OpenAPI contract for the Home, Catalog Search + Filters, and Book Detail screens.
-    The Home screen has a hero image above a featured-books carousel; it has no
-    New Releases section. JSON fields use camelCase. Prices are numeric INR amounts. The default catalog
+    The Home screen hero image comes from the React template, not this API; featured
+    books are fetched from `/catalog/books` with `featured=true`. JSON fields use camelCase. Prices are numeric INR amounts. The default catalog
     ordering is shown as "Default order" in the design and is described as popularity
     in the result count; its exact ranking rule remains to be decided.
 servers:
@@ -15,20 +15,6 @@ tags:
   - name: Catalog
     description: Public book discovery and detail.
 paths:
-  /catalog/home:
-    get:
-      tags: [Catalog]
-      operationId: getCatalogHome
-      summary: Get the Home hero image and featured books
-      security: []
-      responses:
-        '200':
-          description: Home screen catalog sections.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CatalogHome'
-
   /catalog/books:
     get:
       tags: [Catalog]
@@ -222,56 +208,6 @@ components:
           minimum: 1
           maximum: 5
           nullable: true
-
-    CatalogBookTeaser:
-      type: object
-      required: [id, title, author, featured]
-      properties:
-        id:
-          type: string
-        title:
-          type: string
-        author:
-          type: string
-        coverUrl:
-          type: string
-          format: uri
-          nullable: true
-        featured:
-          type: boolean
-          enum: [true]
-          description: Home Featured Books contains only books whose featured flag is true.
-        physicalVariantId:
-          type: string
-          format: uuid
-          description: Selected featured format's physical variant ID.
-        format:
-          $ref: '#/components/schemas/BookFormat'
-        price:
-          type: string
-          pattern: '^[0-9]+\.[0-9]{2}$'
-          description: Current price in INR.
-        currency:
-          type: string
-          enum: [INR]
-        rating:
-          type: number
-          minimum: 1
-          maximum: 5
-          nullable: true
-
-    CatalogHome:
-      type: object
-      required: [heroImageUrl, featuredBooks]
-      properties:
-        heroImageUrl:
-          type: string
-          format: uri
-          description: Hero image displayed above the featured-books carousel.
-        featuredBooks:
-          type: array
-          items:
-            $ref: '#/components/schemas/CatalogBookTeaser'
 
     PaginatedCatalogBooks:
       type: object

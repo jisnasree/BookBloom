@@ -1,0 +1,739 @@
+openapi: 3.0.3
+info:
+  title: BookBloom Admin Catalog API
+  version: 0.1.0-proposed
+  description: |
+    Staff-only catalog management for books, authors, and categories.
+    Every operation requires authentication and the relevant admin permission.
+    A book has one required authorId and zero or more categoryIds.
+servers:
+  - url: /api/v1
+    description: Configure the API host per environment.
+tags:
+  - name: Admin Books
+  - name: Admin Authors
+  - name: Admin Categories
+security:
+  - BearerAuth: []
+paths:
+  /admin/books:
+    get:
+      tags: [Admin Books]
+      operationId: listAdminBooks
+      summary: Search and paginate catalog books
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 200
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/BookStatus'
+      responses:
+        '200':
+          description: Matching admin books.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminBookPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Admin Books]
+      operationId: createAdminBook
+      summary: Create a book with an author and optional category assignments
+      description: The selected author must exist. Category IDs identify zero or more existing categories.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminBookCreate'
+      responses:
+        '201':
+          description: Book created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminBook'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Author or one of the supplied categories does not exist or cannot be assigned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /admin/books/{bookId}:
+    parameters:
+      - $ref: '#/components/parameters/BookId'
+    get:
+      tags: [Admin Books]
+      operationId: getAdminBook
+      summary: Get a book for administration
+      responses:
+        '200':
+          description: Admin book details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminBook'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Admin Books]
+      operationId: updateAdminBook
+      summary: Update book metadata and author/category assignments
+      description: If categoryIds is omitted, current assignments are preserved. An empty list clears them.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminBookPatch'
+      responses:
+        '200':
+          description: Book updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminBook'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Book, author, or one of the supplied categories does not exist or cannot be assigned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /admin/books/{bookId}/archive:
+    post:
+      tags: [Admin Books]
+      operationId: archiveAdminBook
+      summary: Archive a book
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      responses:
+        '200':
+          description: Book archived.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminBook'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/authors:
+    get:
+      tags: [Admin Authors]
+      operationId: listAdminAuthors
+      summary: Search and paginate authors
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 200
+      responses:
+        '200':
+          description: Authors available for book assignment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAuthorPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Admin Authors]
+      operationId: createAdminAuthor
+      summary: Create an author
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorWrite'
+      responses:
+        '201':
+          description: Author created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAuthor'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/authors/{authorId}:
+    parameters:
+      - name: authorId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Admin Authors]
+      operationId: getAdminAuthor
+      summary: Get an author and its book count
+      responses:
+        '200':
+          description: Author details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAuthor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Admin Authors]
+      operationId: updateAdminAuthor
+      summary: Update an author's name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorPatch'
+      responses:
+        '200':
+          description: Author updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAuthor'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/categories:
+    get:
+      tags: [Admin Categories]
+      operationId: listAdminCategories
+      summary: Search and paginate categories
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 200
+      responses:
+        '200':
+          description: Categories available for administration or book assignment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminCategoryPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Admin Categories]
+      operationId: createAdminCategory
+      summary: Create a category
+      description: If slug is omitted, generate one from the normalized name and enforce uniqueness.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryWrite'
+      responses:
+        '201':
+          description: Category created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminCategory'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /admin/categories/{categoryId}:
+    parameters:
+      - name: categoryId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Admin Categories]
+      operationId: getAdminCategory
+      summary: Get a category and its book count
+      responses:
+        '200':
+          description: Category details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminCategory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Admin Categories]
+      operationId: updateAdminCategory
+      summary: Update category metadata
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryPatch'
+      responses:
+        '200':
+          description: Category updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminCategory'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    BookId:
+      name: bookId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    BookStatus:
+      type: string
+      enum: [DRAFT, PUBLISHED, ARCHIVED]
+    PhysicalFormat:
+      type: string
+      enum: [PAPERBACK, HARDCOVER]
+    Money:
+      type: string
+      pattern: '^[0-9]+\.[0-9]{2}$'
+      example: '2249.00'
+    AdminBook:
+      type: object
+      required: [id, title, slug, authorId, categoryIds, status, variants]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          maxLength: 300
+        slug:
+          type: string
+          maxLength: 320
+        authorId:
+          type: string
+          format: uuid
+        authorName:
+          type: string
+          description: Display-only Author name; authorId is the relationship identifier.
+        categoryIds:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryOption'
+        status:
+          $ref: '#/components/schemas/BookStatus'
+        variants:
+          type: array
+          items:
+            $ref: '#/components/schemas/PhysicalVariant'
+    AdminBookCreate:
+      type: object
+      additionalProperties: false
+      required: [title, slug, authorId, variants]
+      properties:
+        title:
+          type: string
+          maxLength: 300
+        slug:
+          type: string
+          maxLength: 320
+        authorId:
+          type: string
+          format: uuid
+        categoryIds:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        description:
+          type: string
+          nullable: true
+        isbn10:
+          type: string
+          maxLength: 10
+          nullable: true
+        isbn13:
+          type: string
+          maxLength: 13
+          nullable: true
+        coverImageUrl:
+          type: string
+          format: uri
+          nullable: true
+        rating:
+          type: number
+          minimum: 0
+          maximum: 5
+          nullable: true
+        status:
+          $ref: '#/components/schemas/BookStatus'
+        variants:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/PhysicalVariantWrite'
+    AdminBookPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          maxLength: 300
+        slug:
+          type: string
+          maxLength: 320
+        authorId:
+          type: string
+          format: uuid
+        categoryIds:
+          type: array
+          uniqueItems: true
+          description: Omitted means preserve assignments; an empty array clears them.
+          items:
+            type: string
+            format: uuid
+        description:
+          type: string
+          nullable: true
+        isbn10:
+          type: string
+          maxLength: 10
+          nullable: true
+        isbn13:
+          type: string
+          maxLength: 13
+          nullable: true
+        coverImageUrl:
+          type: string
+          format: uri
+          nullable: true
+        rating:
+          type: number
+          minimum: 0
+          maximum: 5
+          nullable: true
+        status:
+          $ref: '#/components/schemas/BookStatus'
+    PhysicalVariant:
+      type: object
+      required: [id, format, price, currency, stockQuantity, isAvailable]
+      properties:
+        id:
+          type: string
+          format: uuid
+        format:
+          $ref: '#/components/schemas/PhysicalFormat'
+        price:
+          $ref: '#/components/schemas/Money'
+        currency:
+          type: string
+          enum: [INR]
+        stockQuantity:
+          type: integer
+          minimum: 0
+        isAvailable:
+          type: boolean
+    PhysicalVariantWrite:
+      type: object
+      additionalProperties: false
+      required: [format, price, stockQuantity]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Include when updating an existing variant.
+        format:
+          $ref: '#/components/schemas/PhysicalFormat'
+        price:
+          $ref: '#/components/schemas/Money'
+        stockQuantity:
+          type: integer
+          minimum: 0
+        isAvailable:
+          type: boolean
+          default: true
+    AdminAuthor:
+      type: object
+      required: [id, name, bookCount]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 200
+        bookCount:
+          type: integer
+          minimum: 0
+    AuthorWrite:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 200
+    AuthorPatch:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 200
+    AdminCategory:
+      type: object
+      required: [id, name, slug, bookCount]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 100
+        slug:
+          type: string
+          maxLength: 120
+        bookCount:
+          type: integer
+          minimum: 0
+    CategoryOption:
+      type: object
+      required: [id, name, slug]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+    CategoryWrite:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        slug:
+          type: string
+          maxLength: 120
+          description: Optional; generated from name when omitted.
+    CategoryPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        slug:
+          type: string
+          maxLength: 120
+    AdminBookPage:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminBook'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+    AdminAuthorPage:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminAuthor'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+    AdminCategoryPage:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminCategory'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+    ApiError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+  responses:
+    BadRequest:
+      description: Invalid request or query.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unauthorized:
+      description: Missing or invalid authentication.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Forbidden:
+      description: Authenticated user lacks the required staff permission.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: Resource does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Conflict:
+      description: Duplicate slug/ISBN or a conflict with referenced data.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
