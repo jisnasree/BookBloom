@@ -15,7 +15,9 @@ erDiagram
         string password "hashed"
         datetime terms_accepted_at "nullable"
         datetime email_verified_at "nullable"
+        boolean is_active "default true"
         boolean is_staff "default false"
+        boolean is_superuser "default false"
         datetime created_at
         datetime updated_at
         datetime last_login "nullable"
@@ -41,7 +43,7 @@ One user has zero or many OTP challenges; each challenge belongs to exactly one 
 
 ### User
 
-Identity, credentials, account-verification state, and server-managed staff marker. 
+Identity, credentials, account-verification state, and server-managed status flags (`is_active`, `is_staff`, `is_superuser`). 
 
 | Field | Type | Key / requirement | Notes |
 | --- | --- | --- | --- |
@@ -53,12 +55,14 @@ Identity, credentials, account-verification state, and server-managed staff mark
 | `password` | Django auth password field | required | Store only the encoded hash using `set_password()`/`create_user()`. |
 | `terms_accepted_at` | `DateTimeField` | nullable for provisioned/legacy accounts | Set server-side for signup after explicit acceptance. |
 | `email_verified_at` | `DateTimeField` | nullable | Null means signup email is not verified. Set after valid signup OTP. |
+| `is_active` | `BooleanField` | default `True` | Server-managed; inactive accounts cannot log in. Never customer-editable. |
 | `is_staff` | `BooleanField` | default `False` | Server-managed; never customer-editable. |
+| `is_superuser` | `BooleanField` | default `False` | Server-managed; grants all permissions. Never customer-editable or settable through signup. |
 | `created_at` | `DateTimeField` | server-set, required | UTC-aware; records account creation time (use instead of a duplicate `date_joined` field). |
 | `updated_at` | `DateTimeField` | server-maintained, required | UTC-aware; update when account fields or verification state change. |
 | `last_login` | `DateTimeField` | nullable, Django-managed | UTC-aware; most recent successful login, not a substitute for `updated_at`. |
 
-Do not add `password_confirmation`, plaintext password, OTP value, `is_active`, or `is_superuser` fields. Django groups/permissions manage specific staff authorization.
+Do not add `password_confirmation`, plaintext password, or OTP value fields. `is_active`, `is_staff`, and `is_superuser` are server-managed and must not be accepted from signup or profile requests or returned to customers. Django groups/permissions manage specific staff authorization.
 
 
 ### EmailOTPChallenge

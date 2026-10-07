@@ -16,7 +16,9 @@ The authenticated customer identity and profile. Authentication owns this model 
 | `phone_number` | String | Required contact number; validate and normalize per the shared policy. |
 | `password` | Django auth password field | Store only Django's encoded password hash; never expose in the API. |
 | `terms_accepted_at` | nullable timestamp | Server-set acceptance evidence; customer cannot edit it. |
+| `is_active` | Boolean, default true | Server-managed; inactive accounts cannot log in. Customer cannot edit it. |
 | `is_staff` | Boolean, default false | Server-managed authorization field; customer cannot edit it. |
+| `is_superuser` | Boolean, default false | Server-managed; grants all permissions. Customer cannot edit it. |
 | `date_joined` | timestamp | Account creation time. |
 
 Profile updates are not defined by the current shared API contract. Do not add account fields or mutation semantics based only on the visual Edit profile button.
@@ -61,7 +63,9 @@ erDiagram
         VARCHAR first_name
         VARCHAR last_name
         VARCHAR phone_number
+        BOOLEAN is_active
         BOOLEAN is_staff
+        BOOLEAN is_superuser
         TIMESTAMP terms_accepted_at
         TIMESTAMP date_joined
     }
