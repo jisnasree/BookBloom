@@ -13,7 +13,6 @@ The authenticated customer identity and profile. Authentication owns this model 
 | `id` | UUID, primary key | Customer identifier. |
 | `email` | Email | Required and unique case-insensitively; normalize before save. |
 | `first_name`, `last_name` | String | Required customer name fields. |
-| `phone_number` | String | Required contact number; validate and normalize per the shared policy. |
 | `password` | Django auth password field | Store only Django's encoded password hash; never expose in the API. |
 | `terms_accepted_at` | nullable timestamp | Server-set acceptance evidence; customer cannot edit it. |
 | `is_active` | Boolean, default true | Server-managed; inactive accounts cannot log in. Customer cannot edit it. |
@@ -62,7 +61,6 @@ erDiagram
         VARCHAR email UK
         VARCHAR first_name
         VARCHAR last_name
-        VARCHAR phone_number
         BOOLEAN is_active
         BOOLEAN is_staff
         BOOLEAN is_superuser

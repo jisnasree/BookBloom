@@ -18,7 +18,7 @@ Simple authenticated API contract for Profile and Saved Addresses in the [Accoun
 
 ## Profile
 
-`GET /me` returns `id`, `firstName`, `lastName`, `email`, `phoneNumber`, `termsAcceptedAt`, and read-only `isStaff`, as defined in the shared API contract. It must not return the password hash or credentials.
+`GET /me` returns `id`, `firstName`, `lastName`, `email`, `termsAcceptedAt`, and read-only `isStaff`, as defined in the shared API contract. It must not return the password hash or credentials.
 
 The Profile screen shows Edit profile and Change password controls, but the current shared contract does not define profile-write or password-change operations. Treat these controls as non-functional mockups until those workflows are separately approved and specified; do not invent or imply a successful update.
 

@@ -11,7 +11,7 @@ This module covers the customer account dashboard, profile, saved addresses, and
 
 ## Profile
 
-- Require authentication and show the signed-in customer's name, email address, phone number, and account information available to the service.
+- Require authentication and show the signed-in customer's name, email address, and account information available to the service.
 - Show the account profile and security sections represented in the Figma screen.
 - Never show a password, password hash, or authentication token.
 - Profile edit and password-change buttons are visual mockups only until corresponding write workflows are approved and specified. Do not imply they save changes.
