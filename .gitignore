@@ -151,3 +151,14 @@ db.sqlite3
 *.sqlite3
 __pycache__/
 *.pyc
+
+books-blooms-backend/authentication/migrations/0002_delete_user.py
+books-blooms-backend/authentication/migrations/0003_initial.py
+books-blooms-backend/authentication/migrations/0004_delete_user.py
+
+
+books-blooms-backend/authentication/migrations/0005_initial.py
+books-blooms-backend/authentication/migrations/0006_emailotpchallenge.py
+books-blooms-backend/authentication/migrations/0007_delete_emailotpchallenge.py
+books-blooms-backend/authentication/migrations/0008_emailotpchallenge.py
+books-blooms-backend/authentication/migrations/[0-9]*.py
