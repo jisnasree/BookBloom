@@ -11,6 +11,7 @@ import hashlib
 from django.conf import settings
 from datetime import timedelta
 from django.utils import timezone
+from django.core.mail import send_mail
 
 
 # Create your views here.
@@ -36,7 +37,12 @@ class CreateUserView(APIView):
                 code_hash = code_hash,
                 expires_at=expires_at
             )
-        
+            send_mail(
+                subject='BookBloom Email Verification',
+                message=f'Your BookBloom verification code is {otp}.',
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[user.email],
+            )
             return Response(
                     serializer.data,
                     status=status.HTTP_201_CREATED
