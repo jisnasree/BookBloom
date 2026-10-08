@@ -11,7 +11,6 @@ erDiagram
         string email UK "normalized, case-insensitive unique"
         string first_name
         string last_name
-        string phone_number
         string password "hashed"
         datetime terms_accepted_at "nullable"
         datetime email_verified_at "nullable"
@@ -51,7 +50,6 @@ Identity, credentials, account-verification state, and server-managed status fla
 | `email` | `EmailField` | required, unique case-insensitively | Normalize before save and login. |
 | `first_name` | `CharField(150)` | required |  |
 | `last_name` | `CharField(150)` | required |  |
-| `phone_number` | `CharField(32)` | required | Validate and normalize before save; exact region policy remains open. |
 | `password` | Django auth password field | required | Store only the encoded hash using `set_password()`/`create_user()`. |
 | `terms_accepted_at` | `DateTimeField` | nullable for provisioned/legacy accounts | Set server-side for signup after explicit acceptance. |
 | `email_verified_at` | `DateTimeField` | nullable | Null means signup email is not verified. Set after valid signup OTP. |
@@ -105,5 +103,4 @@ No application-owned session/token entity is selected yet. Use Django's session 
 - `EmailOTPChallenge.created_at` and `EmailOTPChallenge.updated_at` record challenge issue time and subsequent resend/verification lifecycle changes.
 - One user can have zero or many historical OTP challenges; each challenge belongs to exactly one user.
 - Enforce at most one usable challenge per user and purpose through application transactions and invalidate older challenges when issuing a replacement. Add a database constraint only if compatible with chosen state/SQLite version.
-
 

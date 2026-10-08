@@ -216,12 +216,11 @@ components:
   schemas:
     RegisterRequest:
       type: object
-      required: [firstName, lastName, email, phoneNumber, password, passwordConfirmation, termsAccepted]
+      required: [firstName, lastName, email, password, passwordConfirmation, termsAccepted]
       properties:
         firstName: { type: string, example: Asha }
         lastName: { type: string, example: Menon }
         email: { type: string, format: email, example: asha@example.in }
-        phoneNumber: { type: string, example: '+919876543210' }
         password: { type: string, format: password }
         passwordConfirmation: { type: string, format: password }
         termsAccepted: { type: boolean }
@@ -250,7 +249,6 @@ components:
         firstName: { type: string }
         lastName: { type: string }
         email: { type: string, format: email }
-        phoneNumber: { type: string }
         emailVerifiedAt: { type: string, format: date-time, nullable: true }
         isStaff: { type: boolean }
     EmailRequest:

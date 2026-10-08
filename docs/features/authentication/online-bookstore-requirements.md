@@ -10,7 +10,7 @@ Allow customers to create and securely access an account. Staff use the same log
 
 ### 1. Signup
 
-- Collect first name, last name, email, phone number, password, password confirmation, and explicit Terms & Conditions acceptance.
+- Collect first name, last name, email, password, password confirmation, and explicit Terms & Conditions acceptance.
 - Validate fields and matching passwords before creating the account.
 - Normalize and enforce unique email addresses.
 - Create an unverified account and send a one-time code to the submitted email address.

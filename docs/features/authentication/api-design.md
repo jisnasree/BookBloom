@@ -28,7 +28,6 @@ Request:
   "firstName": "Asha",
   "lastName": "Menon",
   "email": "asha@example.in",
-  "phoneNumber": "+919876543210",
   "password": "example-password",
   "passwordConfirmation": "example-password",
   "termsAccepted": true
@@ -76,7 +75,6 @@ Success: `200 OK`
     "firstName": "Asha",
     "lastName": "Menon",
     "email": "asha@example.in",
-    "phoneNumber": "+919876543210",
     "emailVerifiedAt": "2026-01-01T00:00:00Z",
     "isStaff": false
   }
